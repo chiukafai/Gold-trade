@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}自动交易决策日志 | KingBot 黄金模拟交易{% endblock %}
+
+{% block page_title %}自动交易决策日志{% endblock %}
+{% block page_subtitle %}每小时整点汇总：过去一小时内每次交易决策的判定依据与成交记录（纯模拟盘）{% endblock %}
+
+{% block content %}
+<div style="display: grid; grid-template-columns: 280px 1fr; gap: 20px; align-items: start;">
+
+    <!-- 左侧：日志文件列表 -->
+    <div class="glass-card" style="padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary);">日志时段</h3>
+            <button class="btn btn-secondary" id="refresh-btn" style="padding: 6px 12px; font-size: 12px;"
+                    onclick="loadList()">刷新</button>
+        </div>
+        <div id="file-list" style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="color: var(--text-tertiary); font-size: 13px; padding: 8px;">加载中…</div>
+        </div>
+        <p style="color: var(--text-tertiary); font-size: 11px; margin-top: 12px; line-height: 1.5;">
+            每小时整点后生成上一小时日志。文件名时间戳为「结束整点」，覆盖其前 1 小时。
+        </p>
+    </div>
+
+    <!-- 右侧：日志内容 -->
+    <div class="glass-card" style="padding: 0; overflow: hidden;">
+        <div style="display: flex; justify-content: space-between; align-items: center;
+                    padding: 14px 18px; border-bottom: 1px solid var(--card-border);">
+            <div>
+                <h3 style="font-size: 14px; font-weight: 600; color: var(--text-primary);" id="content-title">—</h3>
+                <span style="font-size: 12px; color: var(--text-secondary);" id="content-meta"></span>
+            </div>
+            <label style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="auto-refresh" checked style="accent-color: var(--primary);">
+                自动刷新(60s)
+            </label>
+        </div>
+        <pre id="log-content" style="margin: 0; padding: 18px; white-space: pre-wrap; word-break: break-word;
+            font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace; font-size: 13px; line-height: 1.7;
+            color: var(--text-secondary); max-height: 68vh; overflow-y: auto; background: rgba(0,0,0,0.18);">加载中…</pre>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentFile = null;
+    let refreshTimer = null;
+
+    function fmtSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        return (bytes / 1024).toFixed(1) + ' KB';
+    }
+
+    // 加载日志文件列表（并在有选中文件时一并取内容）
+    function loadList() {
+        fetch('/api/logs')
+            .then(r => r.json())
+            .then(res => {
+                if (res.status !== 'success') {
+                    document.getElementById('file-list').innerHTML =
+                        '<div style="color: var(--danger); font-size: 13px; padding: 8px;">加载失败：' + res.message + '</div>';
+                    return;
+                }
+                const box = document.getElementById('file-list');
+                if (!res.files.length) {
+                    box.innerHTML = '<div style="color: var(--text-tertiary); font-size: 13px; padding: 8px;">暂无日志文件。<br>开启自动交易后，下一整点约 1 分钟内生成首个。</div>';
+                    document.getElementById('log-content').textContent = '';
+                    document.getElementById('content-title').textContent = '—';
+                    document.getElementById('content-meta').textContent = '';
+                    currentFile = null;
+                    return;
+                }
+                // 若无当前选中，默认用服务端返回的 selected（最新）
+                if (!currentFile || !res.files.find(f => f.name === currentFile)) {
+                    currentFile = res.selected;
+                }
+                box.innerHTML = res.files.map(f => {
+                    const active = f.name === currentFile ? 'background: var(--primary); color: #fff;' : '';
+                    return '<div class="log-file-item" data-name="' + f.name + '" '
+                        + 'style="padding: 10px 12px; border-radius: 10px; cursor: pointer; font-size: 13px; '
+                        + 'transition: var(--transition-swift); ' + active + '" '
+                        + 'onmouseover="if(this.dataset.name!==currentFile)this.style.background=\'rgba(255,255,255,0.04)\'" '
+                        + 'onmouseout="if(this.dataset.name!==currentFile)this.style.background=\'\'">'
+                        + '<div style="font-weight: 500;">' + f.label + '</div>'
+                        + '<div style="font-size: 11px; opacity: 0.7; margin-top: 2px;">' + fmtSize(f.size) + '</div>'
+                        + '</div>';
+                }).join('');
+                // 绑定点击
+                box.querySelectorAll('.log-file-item').forEach(el => {
+                    el.addEventListener('click', () => {
+                        currentFile = el.dataset.name;
+                        loadContent();
+                        // 高亮
+                        box.querySelectorAll('.log-file-item').forEach(x => x.style.background = '');
+                        el.style.background = 'var(--primary)';
+                    });
+                });
+                loadContent();
+            })
+            .catch(err => {
+                document.getElementById('file-list').innerHTML =
+                    '<div style="color: var(--danger); font-size: 13px; padding: 8px;">网络错误：' + err + '</div>';
+            });
+    }
+
+    // 加载当前选中文件内容
+    function loadContent() {
+        if (!currentFile) return;
+        fetch('/api/logs?file=' + encodeURIComponent(currentFile))
+            .then(r => r.json())
+            .then(res => {
+                if (res.status !== 'success') {
+                    document.getElementById('log-content').textContent = '加载失败：' + res.message;
+                    return;
+                }
+                document.getElementById('log-content').textContent = res.content || '（空文件）';
+                // 标题用文件名推导的 label：服务端 selected 带内容时未回 label，这里简单取文件名
+                document.getElementById('content-title').textContent = currentFile.replace('auto_trade_decision_', '').replace('.log', '');
+                const cnt = (res.content || '').split('\n').filter(l => l.startsWith('[')).length;
+                const traded = (res.content || '').includes('成交：是');
+                document.getElementById('content-meta').textContent =
+                    '逐轮判定 ' + cnt + ' 条' + (traded ? ' · 含成交记录' : ' · 本时段无成交');
+                // 自动滚到顶
+                const pre = document.getElementById('log-content');
+                pre.scrollTop = 0;
+            })
+            .catch(err => {
+                document.getElementById('log-content').textContent = '网络错误：' + err;
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadList();
+        const cb = document.getElementById('auto-refresh');
+        function applyTimer() {
+            if (refreshTimer) clearInterval(refreshTimer);
+            if (cb.checked) {
+                refreshTimer = setInterval(() => {
+                    // 列表 + 内容一起刷新（新整点会自动出现新文件并选中最新）
+                    loadList();
+                }, 60000);
+            }
+        }
+        cb.addEventListener('change', applyTimer);
+        applyTimer();
+    });
+</script>
+{% endblock %}

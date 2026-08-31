@@ -1,0 +1,6 @@
+flask>=3
+requests>=2
+python-dotenv
+numpy==2.2.6
+pandas==2.3.3
+gunicorn

@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  gold-trade:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gold-trade
+    ports:
+      - "5002:5002"
+    restart: unless-stopped
+    environment:
+      - PORT=5002
+      - DB_PATH=/app/data/gold_trader.db
+      # 24小时模拟交易开关：设为 1 时随时可下单（不限制交易时段）；删掉此行则按真实交易时段
+      - SIM_ALWAYS_OPEN=1
+      # 本地部署无需 Hugging Face 云同步，留空即跳过
+      # - HF_REPO_ID=
+      # - HF_TOKEN=
+    volumes:
+      # 数据持久化：数据库文件独立挂载
+      - gold_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/api/price"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  gold_data:
+    driver: local

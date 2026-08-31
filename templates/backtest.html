@@ -1,0 +1,912 @@
+{% extends "base.html" %}
+
+{% block title %}KingBot 黄金模拟交易 - 策略回测实验室{% endblock %}
+
+{% block page_title %}策略回测实验室{% endblock %}
+{% block page_subtitle %}专业级黄金策略验证：风险指标 · 摩擦成本 · 参数敏感性 · 滚动验证 · 蒙特卡洛（纯虚拟，无真实资金）{% endblock %}
+
+{% block extra_css %}
+<style>
+    .bt-layout {
+        display: grid;
+        grid-template-columns: 340px 1fr;
+        gap: 24px;
+        align-items: start;
+    }
+    @media (max-width: 992px) {
+        .bt-layout { grid-template-columns: 1fr; }
+    }
+    .form-group { margin-bottom: 16px; }
+    .form-label {
+        display: block; font-size: 13px; font-weight: 500;
+        color: var(--text-secondary); margin-bottom: 8px;
+    }
+    .form-input {
+        width: 100%; padding: 10px 12px; border-radius: 10px;
+        background: rgba(255,255,255,0.03); border: 1px solid var(--card-border);
+        color: var(--text-primary); font-size: 14px;
+    }
+    .form-input:focus { outline: none; border-color: var(--primary); }
+    .form-input-hint { font-size: 11px; color: var(--text-secondary); margin-top: 6px; display: block; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .collapsible-header {
+        cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 0; border-top: 1px solid var(--card-border);
+        font-size: 13px; font-weight: 600; color: var(--text-secondary);
+        user-select: none;
+    }
+    .collapsible-header:hover { color: var(--text-primary); }
+    .collapsible-body { overflow: hidden; transition: max-height 0.3s ease; }
+    .collapsible-body.collapsed { max-height: 0 !important; }
+
+    /* Tab 导航 */
+    .tab-nav {
+        display: flex; gap: 4px; margin-bottom: 20px;
+        border-bottom: 1px solid var(--card-border);
+    }
+    .tab-btn {
+        padding: 10px 18px; background: none; border: none; color: var(--text-secondary);
+        font-size: 14px; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent;
+        margin-bottom: -1px; transition: all 0.2s;
+    }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active { color: var(--accent-gold); border-bottom-color: var(--accent-gold); }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* 统计卡片 */
+    .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+    @media (max-width: 768px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+    .stat-box {
+        background: rgba(255,255,255,0.03); border: 1px solid var(--card-border);
+        border-radius: 12px; padding: 12px;
+    }
+    .stat-box .v { font-family: 'Outfit',sans-serif; font-size: 18px; font-weight: 700; }
+    .stat-box .k { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+    .pos { color: var(--accent-gold); }
+    .neg { color: var(--danger); }
+    .risk-grade {
+        display: inline-block; padding: 2px 8px; border-radius: 6px;
+        font-size: 11px; font-weight: 600;
+    }
+    .grade-A { background: rgba(34,197,94,0.15); color: #22c55e; }
+    .grade-B { background: rgba(59,130,246,0.15); color: #3b82f6; }
+    .grade-C { background: rgba(251,191,36,0.15); color: #fbbf24; }
+    .grade-D { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+    /* 表格 */
+    .signal-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .signal-table th, .signal-table td { padding: 8px 10px; border-bottom: 1px solid var(--card-border); text-align: left; }
+    .signal-table th { color: var(--text-secondary); font-weight: 500; position: sticky; top: 0; background: var(--card-elevated); z-index: 1; }
+    .table-wrap { max-height: 320px; overflow-y: auto; border-radius: 12px; border: 1px solid var(--card-border); }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+    .badge-buy { background: rgba(212,168,83,0.15); color: var(--accent-gold); }
+    .badge-sell { background: rgba(212,69,58,0.15); color: var(--danger); }
+    .badge-hold { background: rgba(255,255,255,0.05); color: var(--text-secondary); }
+    .badge-info { background: rgba(59,130,246,0.15); color: #3b82f6; }
+
+    .note-bar {
+        font-size: 12px; color: var(--text-secondary); background: rgba(255,159,10,0.08);
+        border: 1px solid rgba(255,159,10,0.2); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px;
+    }
+    .info-bar {
+        font-size: 12px; background: rgba(59,130,246,0.08);
+        border: 1px solid rgba(59,130,246,0.2); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px;
+        color: #93c5fd;
+    }
+
+    .chart-container {
+        background: rgba(255,255,255,0.02); border: 1px solid var(--card-border);
+        border-radius: 12px; padding: 16px; margin-bottom: 20px;
+    }
+    .chart-container h4 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary); }
+
+    /* 热力图 */
+    .heatmap-wrap { display: flex; gap: 20px; align-items: flex-start; }
+    .heatmap-container { position: relative; }
+    .heatmap-legend {
+        display: flex; flex-direction: column; gap: 8px;
+        font-size: 11px; color: var(--text-secondary); min-width: 80px;
+    }
+    .heatmap-legend .legend-bar {
+        width: 16px; height: 180px; border-radius: 4px;
+        background: linear-gradient(to top, #ef4444, #f59e0b, #22c55e);
+    }
+
+    .section-title {
+        font-size: 14px; font-weight: 600; margin: 20px 0 10px;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .section-title::before {
+        content: ''; width: 3px; height: 16px; background: var(--accent-gold); border-radius: 2px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bt-layout">
+    <!-- 左：控制面板 -->
+    <div class="glass-card" style="padding: 22px;">
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 18px;">回测参数</h3>
+
+        <div class="form-group">
+            <label class="form-label" for="bt-mode">数据源</label>
+            <select id="bt-mode" class="form-input" onchange="onModeChange()">
+                <option value="real">真实行情（项目管道 90d）</option>
+                <option value="synthetic" selected>模拟行情（演示用，非真实数据）</option>
+                <option value="csv">上传 CSV 真实日线</option>
+            </select>
+            <span class="form-input-hint">真实模式与线上自动交易同源；模拟行情用于演示策略逻辑</span>
+        </div>
+
+        <div class="form-group" id="bt-synth-group">
+            <label class="form-label" for="bt-points">模拟K线数量</label>
+            <input type="number" id="bt-points" class="form-input" value="600" min="50" max="3000">
+            <span class="form-input-hint">生成多少根模拟日K线（建议 300~1000 根）</span>
+            <label class="form-label" for="bt-seed" style="margin-top:12px;">模拟场景编号</label>
+            <input type="number" id="bt-seed" class="form-input" value="7">
+            <span class="form-input-hint">不同编号对应不同的模拟行情走势，便于多场景验证</span>
+        </div>
+
+        <div class="form-group" id="bt-csv-group" style="display:none;">
+            <label class="form-label" for="bt-csv">CSV 文件（需含 date,close 列）</label>
+            <input type="file" id="bt-csv" accept=".csv" class="form-input">
+            <span class="form-input-hint">列名支持 date/close/open/high/low/volume（英文或中文）</span>
+        </div>
+
+        <!-- 策略参数 -->
+        <div class="collapsible-header" onclick="toggleSection('strat-params')">
+            <span>📊 策略参数</span>
+            <span id="strat-params-icon">▼</span>
+        </div>
+        <div id="strat-params" class="collapsible-body">
+            <div class="form-group" style="margin-top:12px;">
+                <div class="form-row">
+                    <div>
+                        <label class="form-label" for="bt-rsi-o">RSI 超卖线</label>
+                        <input type="number" id="bt-rsi-o" class="form-input" value="30" min="5" max="50" step="1">
+                    </div>
+                    <div>
+                        <label class="form-label" for="bt-rsi-b">RSI 超买线</label>
+                        <input type="number" id="bt-rsi-b" class="form-input" value="70" min="50" max="95" step="1">
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--text-secondary);">
+                    <input type="checkbox" id="bt-vol" checked style="accent-color:var(--primary);">
+                    <span>量能确认（成交量 > 均量×1.2 才触发）</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- 摩擦成本 -->
+        <div class="collapsible-header" onclick="toggleSection('friction-params')">
+            <span>💸 摩擦成本（滑点/手续费/延期费）</span>
+            <span id="friction-params-icon">▶</span>
+        </div>
+        <div id="friction-params" class="collapsible-body collapsed" style="max-height:500px;">
+            <div class="form-group" style="margin-top:12px;">
+                <div class="form-row">
+                    <div>
+                        <label class="form-label" for="bt-fee">手续费率</label>
+                        <input type="number" id="bt-fee" class="form-input" value="0.0004" step="0.0001">
+                    </div>
+                    <div>
+                        <label class="form-label" for="bt-slip">滑点（基点 bp）</label>
+                        <input type="number" id="bt-slip" class="form-input" value="0" min="0" step="0.5">
+                    </div>
+                </div>
+                <span class="form-input-hint">手续费默认万四（0.04%）；1bp = 0.01%，黄金实盘常见 1~5bp</span>
+            </div>
+            <div class="form-group">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--text-secondary);">
+                    <input type="checkbox" id="bt-deferred" style="accent-color:var(--primary);">
+                    <span>计入延期补偿费（Au(T+D) 特有）</span>
+                </label>
+                <div class="form-row" style="margin-top:8px;">
+                    <div>
+                        <label class="form-label" for="bt-def-rate">延期费率</label>
+                        <input type="number" id="bt-def-rate" class="form-input" value="0.00015" step="0.00005">
+                    </div>
+                    <div style="display:flex;align-items:end;">
+                        <span class="form-input-hint">默认万一点五/日，多空双方按持仓量支付</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="runBacktest()" style="width:100%; margin-top:16px;">
+            <i data-lucide="play" style="width:16px;height:16px;"></i> 运行回测
+        </button>
+        <p id="bt-status" style="font-size:12px; color:var(--text-secondary); margin-top:12px;"></p>
+    </div>
+
+    <!-- 右：结果区（Tab 布局） -->
+    <div class="glass-card" style="padding: 22px;">
+        <div id="bt-note" class="note-bar" style="display:none;"></div>
+
+        <div class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab('overview')">📈 回测概览</button>
+            <button class="tab-btn" onclick="switchTab('sensitivity')">🎯 参数敏感性</button>
+            <button class="tab-btn" onclick="switchTab('walkforward')">🔄 滚动验证</button>
+            <button class="tab-btn" onclick="switchTab('montecarlo')">🎲 蒙特卡洛</button>
+        </div>
+
+        <!-- Tab 1: 回测概览 -->
+        <div id="tab-overview" class="tab-pane active">
+            <div class="section-title">核心收益指标</div>
+            <div class="stat-grid" id="bt-stats-core"></div>
+
+            <div class="section-title">专业风险指标</div>
+            <div class="stat-grid" id="bt-stats-risk"></div>
+
+            <div class="chart-container">
+                <h4>📈 权益曲线</h4>
+                <canvas id="equity-chart" height="200"></canvas>
+            </div>
+
+            <div id="friction-summary" class="info-bar" style="display:none;"></div>
+
+            <div class="section-title">成交明细</div>
+            <div class="table-wrap">
+                <table class="signal-table" id="bt-trades">
+                    <thead><tr><th>方向</th><th>开仓价</th><th>平仓价</th><th>盈亏</th><th>理由</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div class="section-title">关键信号（开/平）</div>
+            <div class="table-wrap">
+                <table class="signal-table" id="bt-signals">
+                    <thead><tr><th>日期</th><th>价格</th><th>动作</th><th>理由</th><th>仓位</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab 2: 参数敏感性 -->
+        <div id="tab-sensitivity" class="tab-pane">
+            <div class="info-bar">
+                🔍 扫描两个参数的所有组合，识别<strong>"参数高原"</strong>——一片稳定盈利的连续区域，而非孤立的最优值。高原越宽，策略越稳健。
+            </div>
+            <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                <div>
+                    <label class="form-label">X轴参数</label>
+                    <select id="ps-param-x" class="form-input">
+                        <option value="rsi_oversold" selected>RSI 超卖线</option>
+                        <option value="rsi_overbought">RSI 超买线</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Y轴参数</label>
+                    <select id="ps-param-y" class="form-input">
+                        <option value="rsi_oversold">RSI 超卖线</option>
+                        <option value="rsi_overbought" selected>RSI 超买线</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">评估指标</label>
+                    <select id="ps-metric" class="form-input">
+                        <option value="总收益率%" selected>总收益率</option>
+                        <option value="胜率%">胜率</option>
+                        <option value="盈亏比">盈亏比</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
+                <div>
+                    <label class="form-label">X最小值</label>
+                    <input type="number" id="ps-x-min" class="form-input" value="20">
+                </div>
+                <div>
+                    <label class="form-label">X最大值</label>
+                    <input type="number" id="ps-x-max" class="form-input" value="40">
+                </div>
+                <div>
+                    <label class="form-label">Y最小值</label>
+                    <input type="number" id="ps-y-min" class="form-input" value="60">
+                </div>
+                <div>
+                    <label class="form-label">Y最大值</label>
+                    <input type="number" id="ps-y-max" class="form-input" value="80">
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="runSensitivity()" style="margin-bottom:16px;">
+                🔍 开始参数扫描
+            </button>
+            <span id="ps-status" style="font-size:12px; color:var(--text-secondary); margin-left:12px;"></span>
+
+            <div id="ps-result" style="display:none;">
+                <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr);">
+                    <div class="stat-box"><div class="v pos" id="ps-best-val">--</div><div class="k">最优收益</div></div>
+                    <div class="stat-box"><div class="v" id="ps-best-param">--</div><div class="k">最优参数组合</div></div>
+                    <div class="stat-box"><div class="v" id="ps-robustness"><span class="risk-grade grade-D">--</span></div><div class="k">稳健性评级</div></div>
+                </div>
+                <div class="chart-container">
+                    <h4>🔥 参数敏感性热力图（颜色越绿=收益越高）</h4>
+                    <div class="heatmap-wrap">
+                        <canvas id="heatmap-canvas"></canvas>
+                        <div class="heatmap-legend">
+                            <span>高收益</span>
+                            <div class="legend-bar"></div>
+                            <span>低收益</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="info-bar" id="ps-interpretation"></div>
+            </div>
+        </div>
+
+        <!-- Tab 3: 滚动验证 -->
+        <div id="tab-walkforward" class="tab-pane">
+            <div class="info-bar">
+                🔄 <strong>滚动验证（Walk-Forward Analysis）</strong>是样本外验证的黄金标准：将历史数据切分为多段「训练+测试」组合，固定参数滚动检验。
+                如果测试期收益普遍高于训练期且胜率高，说明策略时间稳健性好；反之则可能存在过拟合。
+            </div>
+            <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                <div>
+                    <label class="form-label">训练窗口（根K线）</label>
+                    <input type="number" id="wf-train" class="form-input" value="200" min="50">
+                </div>
+                <div>
+                    <label class="form-label">测试窗口（根K线）</label>
+                    <input type="number" id="wf-test" class="form-input" value="50" min="10">
+                </div>
+                <div>
+                    <label class="form-label">滚动步长（根K线）</label>
+                    <input type="number" id="wf-step" class="form-input" value="50" min="10">
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="runWalkForward()" style="margin-bottom:16px;">
+                🔄 开始滚动验证
+            </button>
+            <span id="wf-status" style="font-size:12px; color:var(--text-secondary); margin-left:12px;"></span>
+
+            <div id="wf-result" style="display:none;">
+                <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="stat-box"><div class="v" id="wf-rounds">--</div><div class="k">验证轮次</div></div>
+                    <div class="stat-box"><div class="v pos" id="wf-avg-test">--</div><div class="k">平均测试期收益</div></div>
+                    <div class="stat-box"><div class="v" id="wf-winrate">--</div><div class="k">窗口胜率</div></div>
+                    <div class="stat-box"><div class="v" id="wf-overfit"><span class="risk-grade grade-D">--</span></div><div class="k">过拟合风险</div></div>
+                </div>
+                <div class="chart-container">
+                    <h4>📊 训练期 vs 测试期收益对比</h4>
+                    <canvas id="wf-chart" height="200"></canvas>
+                </div>
+                <div class="section-title">各轮明细</div>
+                <div class="table-wrap">
+                    <table class="signal-table" id="wf-table">
+                        <thead><tr><th>轮次</th><th>训练区间</th><th>测试区间</th><th>训练收益</th><th>测试收益</th><th>收益衰减</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 4: 蒙特卡洛 -->
+        <div id="tab-montecarlo" class="tab-pane">
+            <div class="info-bar">
+                🎲 <strong>蒙特卡洛模拟</strong>通过随机重排收益率序列生成大量"可能的历史路径"。
+                如果策略在绝大多数路径下都能盈利，说明稳健性好；如果只有少数路径盈利但收益极高，说明靠运气成分大。
+            </div>
+            <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div>
+                    <label class="form-label">模拟次数</label>
+                    <select id="mc-n" class="form-input">
+                        <option value="200">200 次（快速）</option>
+                        <option value="500" selected>500 次（推荐）</option>
+                        <option value="1000">1000 次（高精度）</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">模拟方法</label>
+                    <select id="mc-method" class="form-input">
+                        <option value="bootstrap" selected>Bootstrap（有放回重抽，推荐）</option>
+                        <option value="shuffle">Shuffle（随机打乱，压力测试）</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="runMonteCarlo()" style="margin-bottom:16px;">
+                🎲 开始蒙特卡洛模拟
+            </button>
+            <span id="mc-status" style="font-size:12px; color:var(--text-secondary); margin-left:12px;"></span>
+
+            <div id="mc-result" style="display:none;">
+                <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="stat-box"><div class="v" id="mc-winrate">--</div><div class="k">模拟胜率</div></div>
+                    <div class="stat-box"><div class="v" id="mc-mean">--</div><div class="k">模拟均值收益</div></div>
+                    <div class="stat-box"><div class="v neg" id="mc-pct5">--</div><div class="k">5%分位损失(VaR)</div></div>
+                    <div class="stat-box"><div class="v" id="mc-grade"><span class="risk-grade grade-D">--</span></div><div class="k">稳健性评级</div></div>
+                </div>
+                <div class="chart-container">
+                    <h4>📊 收益分布直方图（20个区间）</h4>
+                    <canvas id="mc-chart" height="200"></canvas>
+                </div>
+                <div class="info-bar" id="mc-interpretation"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+let equityChart = null;
+let wfChart = null;
+let mcChart = null;
+let lastResult = null;
+let lastPayload = null;
+
+// ========== 工具函数 ==========
+function fmt(n) { return Number(n).toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function cls(v) { return (typeof v === 'number' && v > 0) ? 'pos' : ((typeof v === 'number' && v < 0) ? 'neg' : ''); }
+
+function toggleSection(id) {
+    const body = document.getElementById(id);
+    const icon = document.getElementById(id + '-icon');
+    body.classList.toggle('collapsed');
+    icon.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
+}
+
+function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`).classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+    // 图表自适应
+    setTimeout(() => {
+        if (equityChart) equityChart.resize();
+        if (wfChart) wfChart.resize();
+        if (mcChart) mcChart.resize();
+    }, 50);
+}
+
+function onModeChange() {
+    const m = document.getElementById('bt-mode').value;
+    document.getElementById('bt-synth-group').style.display = (m === 'synthetic') ? '' : 'none';
+    document.getElementById('bt-csv-group').style.display = (m === 'csv') ? '' : 'none';
+}
+
+// 构建基础 payload（共用）
+function buildPayload() {
+    const mode = document.getElementById('bt-mode').value;
+    const payload = {
+        mode: mode,
+        rsi_oversold: parseFloat(document.getElementById('bt-rsi-o').value),
+        rsi_overbought: parseFloat(document.getElementById('bt-rsi-b').value),
+        vol_confirm: document.getElementById('bt-vol').checked,
+        friction: {
+            fee_rate: parseFloat(document.getElementById('bt-fee').value),
+            slippage_bps: parseFloat(document.getElementById('bt-slip').value),
+            include_deferred_fee: document.getElementById('bt-deferred').checked,
+            deferred_fee_rate: parseFloat(document.getElementById('bt-def-rate').value),
+        }
+    };
+    if (mode === 'synthetic') {
+        payload.points = parseInt(document.getElementById('bt-points').value, 10);
+        payload.seed = parseInt(document.getElementById('bt-seed').value, 10);
+    }
+    return payload;
+}
+
+// 带 CSV 支持的 fetch 封装
+function apiPost(url, payload, callback) {
+    const mode = payload.mode;
+    const doFetch = (body) => {
+        fetch(url, {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.status === 'success') callback(res.result);
+            else callback(null, res.message);
+        })
+        .catch(e => callback(null, '出错：' + e));
+    };
+    if (mode === 'csv') {
+        const file = document.getElementById('bt-csv').files[0];
+        if (!file) { callback(null, '请先选择 CSV 文件'); return; }
+        const reader = new FileReader();
+        reader.onload = () => { payload.csv_text = reader.result; doFetch(payload); };
+        reader.readAsText(file);
+    } else {
+        doFetch(payload);
+    }
+}
+
+// ========== Tab 1: 回测概览 ==========
+function runBacktest() {
+    const status = document.getElementById('bt-status');
+    status.textContent = '回测中…';
+    const payload = buildPayload();
+    lastPayload = payload;
+    apiPost('/api/backtest', payload, (r, err) => {
+        if (err) { status.textContent = '❌ ' + err; return; }
+        lastResult = r;
+        status.textContent = '✅ 完成';
+        renderOverview(r);
+    });
+}
+
+function renderOverview(r) {
+    const note = document.getElementById('bt-note');
+    note.style.display = '';
+    note.textContent = 'ℹ️ ' + r.note + (r.mode === 'synthetic' ? '（演示用模拟数据，非真实行情）' : '');
+
+    const s = r.stats;
+
+    // 核心指标
+    document.getElementById('bt-stats-core').innerHTML = `
+        <div class="stat-box"><div class="v ${cls(s['总收益率%'])}">${s['总收益率%']}%</div><div class="k">总收益率</div></div>
+        <div class="stat-box"><div class="v">${s['胜率%']}%</div><div class="k">胜率</div></div>
+        <div class="stat-box"><div class="v">${s['笔数']}</div><div class="k">交易笔数</div></div>
+        <div class="stat-box"><div class="v">${s['盈亏比']}</div><div class="k">盈亏比</div></div>
+        <div class="stat-box"><div class="v neg">${s['最大回撤%']}%</div><div class="k">最大回撤</div></div>
+        <div class="stat-box"><div class="v">${fmt(s['期末权益'])}</div><div class="k">期末权益</div></div>
+        <div class="stat-box"><div class="v">${s['盈利因子'] || '--'}</div><div class="k">盈利因子</div></div>
+        <div class="stat-box"><div class="v">${s['平均持仓天数'] || '--'}天</div><div class="k">平均持仓天数</div></div>
+    `;
+
+    // 风险指标
+    const riskHtml = [];
+    const riskMap = [
+        ['夏普比率', '夏普比率'],
+        ['索提诺比率', '索提诺比率'],
+        ['卡玛比率', '卡玛比率'],
+        ['VaR_95%', 'VaR (95%)'],
+        ['CVaR_95%', 'CVaR (95%)'],
+        ['年化收益率%', '年化收益率'],
+        ['年化波动率%', '年化波动率'],
+        ['最大回撤持续天数', '最大回撤天数'],
+    ];
+    riskMap.forEach(([key, label]) => {
+        const val = s[key];
+        if (val !== undefined) {
+            riskHtml.push(`<div class="stat-box"><div class="v">${val}${key.includes('%') ? '%' : ''}</div><div class="k">${label}</div></div>`);
+        }
+    });
+    // 填充到8格
+    while (riskHtml.length < 8) riskHtml.push('<div class="stat-box"><div class="v">--</div><div class="k">-</div></div>');
+    document.getElementById('bt-stats-risk').innerHTML = riskHtml.join('');
+
+    // 权益曲线
+    drawEquityChart(r.equity);
+
+    // 摩擦成本摘要
+    const fric = r.friction;
+    if (fric && fric['摩擦成本合计'] > 0) {
+        const fs = document.getElementById('friction-summary');
+        fs.style.display = '';
+        const totalCost = fric['摩擦成本合计'];
+        const costPct = fric['摩擦占本金%'];
+        const totalFee = fric['总手续费'];
+        const totalSlip = fric['总滑点损失'];
+        const totalDef = fric['总延期费'] || 0;
+        const grossReturn = Math.abs(s['总收益率%']) + costPct;
+        const eatenPct = grossReturn > 0 ? (costPct / grossReturn * 100).toFixed(1) : 0;
+        fs.innerHTML = `💸 <strong>摩擦成本摘要</strong>：总摩擦成本 ${fmt(totalCost)} 元（占初始资金 ${costPct}%），
+            其中手续费 ${fmt(totalFee)} 元，滑点成本 ${fmt(totalSlip)} 元${totalDef > 0 ? '，延期费 ' + fmt(totalDef) + ' 元' : ''}。
+            摩擦吞噬了约 ${eatenPct}% 的理论收益。`;
+    } else {
+        document.getElementById('friction-summary').style.display = 'none';
+    }
+
+    // 成交明细
+    const tb = document.querySelector('#bt-trades tbody');
+    tb.innerHTML = '';
+    if (!r.trades.length) {
+        tb.innerHTML = '<tr><td colspan="5" style="color:var(--text-secondary)">本段无完整平仓成交</td></tr>';
+    } else {
+        r.trades.slice(0, 80).forEach(t => {
+            const pc = t.pnl > 0 ? 'pos' : 'neg';
+            tb.innerHTML += `<tr><td>${t.side==='long'?'多':'空'}</td><td>${fmt(t.open)}</td><td>${fmt(t.close)}</td><td class="${pc}">${t.pnl>=0?'+':''}${fmt(t.pnl)}</td><td style="color:var(--text-secondary)">${t.reason}</td></tr>`;
+        });
+    }
+
+    // 关键信号
+    const sig = (r.signals || []).filter(x => x.action !== '持有');
+    const tb2 = document.querySelector('#bt-signals tbody');
+    tb2.innerHTML = '';
+    const show = sig.length <= 16 ? sig : sig.slice(0, 8).concat(sig.slice(-8));
+    if (!show.length) {
+        tb2.innerHTML = '<tr><td colspan="5" style="color:var(--text-secondary)">全程持有观望，无开/平信号</td></tr>';
+    } else {
+        show.forEach(x => {
+            let b = 'badge-hold';
+            if (x.action === '开多' || x.action === '平空') b = 'badge-buy';
+            else if (x.action === '开空' || x.action === '平多') b = 'badge-sell';
+            tb2.innerHTML += `<tr><td>${x.date}</td><td>${fmt(x.price)}</td><td><span class="badge ${b}">${x.action}</span></td><td style="color:var(--text-secondary)">${x.reason}</td><td>${x.pos}</td></tr>`;
+        });
+    }
+}
+
+function drawEquityChart(equity) {
+    const ctx = document.getElementById('equity-chart').getContext('2d');
+    if (equityChart) equityChart.destroy();
+    const labels = equity.map((_, i) => i);
+    equityChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '权益',
+                data: equity,
+                borderColor: '#d4a853',
+                backgroundColor: 'rgba(212,168,83,0.1)',
+                fill: true,
+                tension: 0.1,
+                pointRadius: 0,
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { display: false },
+                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } }
+            }
+        }
+    });
+}
+
+// ========== Tab 2: 参数敏感性 ==========
+function runSensitivity() {
+    if (!lastPayload) {
+        document.getElementById('ps-status').textContent = '⚠️ 请先运行一次回测';
+        return;
+    }
+    document.getElementById('ps-status').textContent = '参数扫描中…（5×5=25次回测，约需几秒）';
+    const payload = { ...lastPayload };
+    payload.param_x = document.getElementById('ps-param-x').value;
+    payload.param_y = document.getElementById('ps-param-y').value;
+    payload.metric = document.getElementById('ps-metric').value;
+    const xMin = parseFloat(document.getElementById('ps-x-min').value);
+    const xMax = parseFloat(document.getElementById('ps-x-max').value);
+    const yMin = parseFloat(document.getElementById('ps-y-min').value);
+    const yMax = parseFloat(document.getElementById('ps-y-max').value);
+    payload.range_x = [];
+    for (let i = 0; i < 5; i++) payload.range_x.push(xMin + (xMax - xMin) * i / 4);
+    payload.range_y = [];
+    for (let i = 0; i < 5; i++) payload.range_y.push(yMin + (yMax - yMin) * i / 4);
+
+    apiPost('/api/backtest/sensitivity', payload, (r, err) => {
+        if (err) { document.getElementById('ps-status').textContent = '❌ ' + err; return; }
+        document.getElementById('ps-status').textContent = '✅ 完成';
+        document.getElementById('ps-result').style.display = '';
+        renderSensitivity(r);
+    });
+}
+
+function renderSensitivity(r) {
+    document.getElementById('ps-best-val').textContent = r.best_value + '%';
+    const bp = r.best_params;
+    const bpStr = Object.entries(bp).map(([k,v]) => `${k}=${v}`).join(', ');
+    document.getElementById('ps-best-param').textContent = bpStr;
+    const grade = r.robustness_level.charAt(0);
+    document.getElementById('ps-robustness').innerHTML = `<span class="risk-grade grade-${grade}">${r.robustness_level}</span>`;
+    document.getElementById('ps-interpretation').innerHTML =
+        `💡 <strong>稳健性评分</strong>：${r.robustness_score}% 的参数组合能达到最优收益的 80% 以上。
+        ${r.robustness_score >= 40 ? '参数高原较宽，策略对参数不敏感，稳健性较好。' :
+          r.robustness_score >= 20 ? '存在一定参数高原，但最优参数附近表现下降较快，需注意参数微调的影响。' :
+          '参数高原很窄，最优表现集中在少数参数组合上，过拟合风险较高，实盘需谨慎。'}`;
+    drawHeatmap(r);
+}
+
+function drawHeatmap(r) {
+    const cv = document.getElementById('heatmap-canvas');
+    const rows = r.matrix.length;
+    const cols = r.matrix[0].length;
+    const cellSize = 60;
+    const labelW = 50;
+    const labelH = 24;
+    cv.width = labelW + cols * cellSize;
+    cv.height = labelH + rows * cellSize;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+
+    // 找出最值用于颜色映射
+    let minV = Infinity, maxV = -Infinity;
+    r.matrix.forEach(row => row.forEach(v => { if (v < minV) minV = v; if (v > maxV) maxV = v; }));
+    const range = maxV - minV || 1;
+
+    // 绘制格子 + X 轴标签
+    r.matrix.forEach((row, yi) => {
+        // Y 轴标签
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(r.y_labels[yi], labelW - 6, labelH + yi * cellSize + cellSize / 2);
+
+        row.forEach((val, xi) => {
+            const x = labelW + xi * cellSize;
+            const y = labelH + yi * cellSize;
+            // 颜色映射：红→黄→绿
+            const t = (val - minV) / range;
+            let rC, gC, bC;
+            if (t < 0.5) {
+                const tt = t * 2;
+                rC = 239; gC = Math.round(68 + (190 - 68) * tt); bC = 68;
+            } else {
+                const tt = (t - 0.5) * 2;
+                rC = Math.round(239 + (34 - 239) * tt); gC = Math.round(190 + (197 - 190) * tt); bC = Math.round(68 + (94 - 68) * tt);
+            }
+            ctx.fillStyle = `rgb(${rC},${gC},${bC})`;
+            ctx.fillRect(x, y, cellSize - 2, cellSize - 2);
+            // 数值
+            ctx.fillStyle = (t > 0.5) ? '#fff' : '#fff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(val.toFixed(2), x + cellSize / 2, y + cellSize / 2);
+            // X 轴标签（第一行上方）
+            if (yi === 0) {
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.font = '11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(r.x_labels[xi], x + cellSize / 2, labelH - 4);
+            }
+        });
+    });
+}
+
+// ========== Tab 3: 滚动验证 ==========
+function runWalkForward() {
+    if (!lastPayload) {
+        document.getElementById('wf-status').textContent = '⚠️ 请先运行一次回测';
+        return;
+    }
+    document.getElementById('wf-status').textContent = '滚动验证中…';
+    const payload = { ...lastPayload };
+    payload.train_window = parseInt(document.getElementById('wf-train').value, 10);
+    payload.test_window = parseInt(document.getElementById('wf-test').value, 10);
+    payload.step = parseInt(document.getElementById('wf-step').value, 10);
+
+    apiPost('/api/backtest/walkforward', payload, (r, err) => {
+        if (err) { document.getElementById('wf-status').textContent = '❌ ' + err; return; }
+        document.getElementById('wf-status').textContent = '✅ 完成';
+        document.getElementById('wf-result').style.display = '';
+        renderWalkForward(r);
+    });
+}
+
+function renderWalkForward(r) {
+    const s = r.summary;
+    document.getElementById('wf-rounds').textContent = s.total_rounds;
+    const avgTest = s.avg_test_return;
+    document.getElementById('wf-avg-test').innerHTML = `<span class="${cls(avgTest)}">${avgTest > 0 ? '+' : ''}${avgTest}%</span>`;
+    document.getElementById('wf-winrate').textContent = s.win_rate_of_windows + '%';
+    const risk = s.overfit_risk;
+    const riskGrade = risk === '低' ? 'grade-A' : (risk === '中' ? 'grade-C' : 'grade-D');
+    document.getElementById('wf-overfit').innerHTML = `<span class="risk-grade ${riskGrade}">${risk}</span>`;
+
+    // 图表
+    const ctx = document.getElementById('wf-chart').getContext('2d');
+    if (wfChart) wfChart.destroy();
+    const labels = r.rounds.map(x => '第' + x.round + '轮');
+    wfChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: '训练期收益%', data: r.rounds.map(x => x.train_return), backgroundColor: 'rgba(59,130,246,0.6)' },
+                { label: '测试期收益%', data: r.rounds.map(x => x.test_return), backgroundColor: 'rgba(212,168,83,0.8)' }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: 'rgba(255,255,255,0.7)' } } },
+            scales: {
+                x: { ticks: { color: 'rgba(255,255,255,0.5)' }, grid: { display: false } },
+                y: { ticks: { color: 'rgba(255,255,255,0.5)' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+        }
+    });
+
+    // 表格
+    const tb = document.querySelector('#wf-table tbody');
+    tb.innerHTML = '';
+    r.rounds.forEach(x => {
+        const tc = x.test_return > 0 ? 'pos' : 'neg';
+        tb.innerHTML += `<tr>
+            <td>${x.round}</td>
+            <td>${x.train_range}</td>
+            <td>${x.test_range}</td>
+            <td>${x.train_return > 0 ? '+' : ''}${x.train_return.toFixed(2)}%</td>
+            <td class="${tc}">${x.test_return > 0 ? '+' : ''}${x.test_return.toFixed(2)}%</td>
+            <td>${x.degradation_pct}%</td>
+        </tr>`;
+    });
+}
+
+// ========== Tab 4: 蒙特卡洛 ==========
+function runMonteCarlo() {
+    if (!lastPayload) {
+        document.getElementById('mc-status').textContent = '⚠️ 请先运行一次回测';
+        return;
+    }
+    document.getElementById('mc-status').textContent = '蒙特卡洛模拟中…（请稍候）';
+    const payload = { ...lastPayload };
+    payload.n_simulations = parseInt(document.getElementById('mc-n').value, 10);
+    payload.method = document.getElementById('mc-method').value;
+
+    apiPost('/api/backtest/montecarlo', payload, (r, err) => {
+        if (err) { document.getElementById('mc-status').textContent = '❌ ' + err; return; }
+        document.getElementById('mc-status').textContent = '✅ 完成';
+        document.getElementById('mc-result').style.display = '';
+        renderMonteCarlo(r);
+    });
+}
+
+function renderMonteCarlo(r) {
+    const d = r.distribution;
+    document.getElementById('mc-winrate').textContent = d.win_rate + '%';
+    document.getElementById('mc-mean').innerHTML = `<span class="${cls(d.mean_return)}">${d.mean_return > 0 ? '+' : ''}${d.mean_return}%</span>`;
+    document.getElementById('mc-pct5').textContent = d.pct_5 + '%';
+    const grade = r.robustness.charAt(0);
+    document.getElementById('mc-grade').innerHTML = `<span class="risk-grade grade-${grade}">${r.robustness}</span>`;
+    document.getElementById('mc-interpretation').textContent = '💡 ' + r.interpretation;
+
+    // 直方图
+    const ctx = document.getElementById('mc-chart').getContext('2d');
+    if (mcChart) mcChart.destroy();
+    const labels = r.histogram.map(h => h.start.toFixed(1));
+    const data = r.histogram.map(h => h.count);
+    // 标注原始回测位置
+    const origBin = r.histogram.findIndex(h => r.original_return >= h.start && r.original_return < h.end);
+
+    const bgColors = r.histogram.map((h, i) => {
+        const mid = (h.start + h.end) / 2;
+        return mid >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)';
+    });
+    if (origBin >= 0) bgColors[origBin] = 'rgba(212,168,83,1)';
+
+    mcChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '路径数量',
+                data: data,
+                backgroundColor: bgColors,
+                borderRadius: 2,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const h = r.histogram[ctx.dataIndex];
+                            return [`收益区间: ${h.start.toFixed(2)}% ~ ${h.end.toFixed(2)}%`, `路径数: ${h.count}`];
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: 'rgba(255,255,255,0.5)', maxRotation: 45, minRotation: 0 },
+                    grid: { display: false },
+                    title: { display: true, text: '收益率区间 (%)', color: 'rgba(255,255,255,0.5)' }
+                },
+                y: {
+                    ticks: { color: 'rgba(255,255,255,0.5)' },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    title: { display: true, text: '路径数', color: 'rgba(255,255,255,0.5)' }
+                }
+            }
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    lucide.createIcons();
+    onModeChange();
+});
+</script>
+{% endblock %}

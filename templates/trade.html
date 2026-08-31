@@ -1,0 +1,762 @@
+{% extends "base.html" %}
+
+{% block title %}KingBot 黄金模拟交易 - 交易终端{% endblock %}
+
+{% block page_title %}双向交易终端{% endblock %}
+{% block page_subtitle %}上海黄金交易所 Au(T+D) 10倍杠杆双向交易模拟交易系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .trade-layout {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 32px;
+        align-items: start;
+    }
+    
+    @media (max-width: 992px) {
+        .trade-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    /* Apple 风格 Segmented Controls */
+    .segmented-control {
+        display: flex;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        padding: 4px;
+        margin-bottom: 20px;
+    }
+    
+    .segment-btn {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        padding: 10px 0;
+        font-size: 13px;
+        font-weight: 600;
+        border-radius: 9px;
+        cursor: pointer;
+        transition: var(--transition-swift);
+    }
+    
+    .segment-btn.active {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text-primary);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    
+    .segment-btn[data-direction="long"].active {
+        background: var(--danger); /* 多头标红 */
+        color: #ffffff;
+    }
+    .segment-btn[data-direction="short"].active {
+        background: var(--success); /* 空头标绿 */
+        color: #ffffff;
+    }
+    
+    /* 输入框样式 */
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 24px;
+    }
+    
+    .form-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+    
+    .input-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+    
+    .form-input {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        padding: 14px 16px;
+        font-family: 'Outfit', sans-serif;
+        font-size: 18px;
+        color: var(--text-primary);
+        outline: none;
+        transition: var(--transition-swift);
+    }
+    
+    .form-input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 10px var(--primary-glow);
+    }
+    
+    .input-unit {
+        position: absolute;
+        right: 16px;
+        color: var(--text-secondary);
+        font-size: 14px;
+        font-weight: 500;
+    }
+    
+    .quick-amount-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+    }
+    
+    .quick-amount-btn {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--card-border);
+        border-radius: 8px;
+        padding: 6px 0;
+        font-size: 12px;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: var(--transition-swift);
+    }
+    
+    .quick-amount-btn:hover {
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text-primary);
+    }
+    
+    /* 账目明细 */
+    .preview-table {
+        margin-bottom: 24px;
+        background: rgba(0,0,0,0.1);
+        border-radius: 12px;
+        padding: 16px;
+    }
+    
+    .preview-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        font-size: 13px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+    .preview-row:last-child {
+        border-bottom: none;
+    }
+    .preview-row.total-row {
+        padding-top: 12px;
+        border-top: 1px dashed var(--card-border);
+        font-weight: 600;
+        font-size: 14px;
+    }
+    
+    /* 持仓状况列表 */
+    .position-card {
+        margin-bottom: 16px;
+        border-radius: 16px;
+        border: 1px solid var(--card-border);
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.02);
+        transition: var(--transition-swift);
+    }
+    
+    .pos-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+    
+    .pos-badge {
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
+    .pos-badge.long {
+        background: rgba(255, 69, 58, 0.15);
+        color: var(--danger);
+        border: 1px solid rgba(255, 69, 58, 0.2);
+    }
+    .pos-badge.short {
+        background: rgba(48, 209, 88, 0.15);
+        color: var(--success);
+        border: 1px solid rgba(48, 209, 88, 0.2);
+    }
+    
+    .pos-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        font-size: 12px;
+    }
+    
+    .pos-grid-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    
+    .pos-grid-label {
+        color: var(--text-secondary);
+    }
+    .pos-grid-val {
+        font-family: 'Outfit', sans-serif;
+        font-weight: 600;
+        font-size: 14px;
+    }
+    
+    /* Apple 风格弹窗 (Glassmorphism Modal) */
+    .modal-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(8px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+    
+    .modal-card {
+        width: 100%;
+        max-width: 400px;
+        background: rgba(30, 30, 45, 0.85);
+        border: 1px solid var(--card-border);
+        border-radius: 24px;
+        padding: 24px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        transform: scale(0.9);
+        opacity: 0;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+    
+    .modal-overlay.active {
+        display: flex;
+    }
+    
+    .modal-overlay.active .modal-card {
+        transform: scale(1);
+        opacity: 1;
+    }
+    
+    .modal-title {
+        font-size: 18px;
+        font-weight: 700;
+        margin-bottom: 12px;
+        text-align: center;
+    }
+    
+    .modal-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+    }
+    .modal-actions button {
+        flex: 1;
+    }
+
+    /* 警告卡片样式 */
+    .danger-alert {
+        background: rgba(255, 69, 58, 0.15);
+        border: 1px solid rgba(255, 69, 58, 0.3);
+        color: var(--danger);
+        padding: 12px 16px;
+        border-radius: 12px;
+        font-size: 13px;
+        margin-bottom: 16px;
+        display: none;
+    }
+    .danger-alert.active {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- 强平警告横幅 -->
+<div id="liquidation-warning-banner" class="danger-alert">
+    ⚠️ <strong>账户处于高度风险！</strong> 您的风险率已低于 120% 预警线，若低于 80% 将触发系统强平。请尽快平仓或注意资金管理。
+</div>
+
+<div class="trade-layout">
+    <!-- 左列：交易下单区 -->
+    <div class="glass-card">
+        <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 20px;">新开仓 / 平持仓</h3>
+        
+        <!-- 交易方向 (多/空) Segmented Control -->
+        <div class="form-label" style="margin-bottom: 6px;">交易类型</div>
+        <div class="segmented-control">
+            <button class="segment-btn active" id="btn-dir-long" data-direction="long">做多 (多头交易)</button>
+            <button class="segment-btn" id="btn-dir-short" data-direction="short">做空 (空头交易)</button>
+        </div>
+        
+        <!-- 开平选择 Segmented Control -->
+        <div class="form-label" style="margin-bottom: 6px;">操作方向</div>
+        <div class="segmented-control">
+            <button class="segment-btn active" id="btn-op-open" data-op="open">开仓 (加仓)</button>
+            <button class="segment-btn" id="btn-op-close" data-op="close">平仓 (减仓)</button>
+        </div>
+        
+        <!-- 交易数量 -->
+        <div class="form-group">
+            <label class="form-label" for="trade-grams">交易数量 (克)</label>
+            <div class="input-wrapper">
+                <input type="number" id="trade-grams" class="form-input" placeholder="输入克数" min="0.1" step="0.1">
+                <span class="input-unit">克</span>
+            </div>
+            <div class="quick-amount-row">
+                <button class="quick-amount-btn" onclick="setTradeGrams(10)">10克</button>
+                <button class="quick-amount-btn" onclick="setTradeGrams(50)">50克</button>
+                <button class="quick-amount-btn" onclick="setTradeGrams(100)">100克</button>
+                <button class="quick-amount-btn" onclick="setTradeGrams(500)">500克</button>
+            </div>
+        </div>
+        
+        <!-- 下单预估预览明细 -->
+        <div class="preview-table">
+            <div class="preview-row">
+                <span style="color: var(--text-secondary)">市场基准价</span>
+                <span id="preview-market-price">--.-- 元/克</span>
+            </div>
+            <div class="preview-row">
+                <span style="color: var(--text-secondary)">执行成交价</span>
+                <span id="preview-trade-price">--.-- 元/克</span>
+            </div>
+            <div class="preview-row">
+                <span style="color: var(--text-secondary)">交易总金额</span>
+                <span id="preview-total-amount">¥0.00</span>
+            </div>
+            <div class="preview-row">
+                <span style="color: var(--text-secondary)">交易手续费 (0.04%)</span>
+                <span id="preview-fee">¥0.00</span>
+            </div>
+            <div class="preview-row" id="row-margin-preview">
+                <span style="color: var(--text-secondary)">冻结保证金 (10%)</span>
+                <span id="preview-margin">¥0.00</span>
+            </div>
+            <div class="preview-row total-row">
+                <span id="preview-total-label">预估合计金额</span>
+                <span id="preview-total-sum">¥0.00</span>
+            </div>
+        </div>
+        
+        <!-- 确认下单大按钮 -->
+        <button class="btn btn-primary" id="btn-submit-trade" style="width: 100%; padding: 14px 0; border-radius: 14px; font-size: 16px;">
+            <i data-lucide="shield-check"></i>
+            <span>提交订单</span>
+        </button>
+    </div>
+    
+    <!-- 右列：账户概要 & 实时持仓区 -->
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+        <!-- 账户资产状态卡 -->
+        <div class="glass-card">
+            <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">资产与风控汇总</h3>
+            
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div class="price-detail-row">
+                    <span style="color: var(--text-secondary)">账户权益 (Equity)</span>
+                    <span class="detail-val" id="equity-val">¥--.--</span>
+                </div>
+                <div class="price-detail-row">
+                    <span style="color: var(--text-secondary)">可用资金 (Available)</span>
+                    <span class="detail-val" id="available-val">¥--.--</span>
+                </div>
+                <div class="price-detail-row">
+                    <span style="color: var(--text-secondary)">占用保证金 (Locked)</span>
+                    <span class="detail-val" id="margin-val">¥--.--</span>
+                </div>
+                <div class="price-detail-row">
+                    <span style="color: var(--text-secondary)">持仓盈亏 (Float PnL)</span>
+                    <span class="detail-val" id="float-pnl-val">¥0.00</span>
+                </div>
+                <div class="price-detail-row">
+                    <span style="color: var(--text-secondary)">账户风险率</span>
+                    <span class="detail-val" id="risk-ratio-val">--%</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 动态持仓看板 -->
+        <div class="glass-card" style="flex: 1;">
+            <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 20px;">当前持仓 (Positions)</h3>
+            
+            <!-- 多头仓位展示 -->
+            <div class="position-card" id="pos-long-card">
+                <div class="pos-header">
+                    <span class="pos-badge long">多头仓位 Long</span>
+                    <span style="color: var(--text-secondary); font-size: 11px;" id="pos-long-time">更新于 --</span>
+                </div>
+                <div class="pos-grid">
+                    <div class="pos-grid-cell">
+                        <span class="pos-grid-label">持仓克数</span>
+                        <span class="pos-grid-val" id="pos-long-grams">0.00 g</span>
+                    </div>
+                    <div class="pos-grid-cell">
+                        <span class="pos-grid-label">持仓均价</span>
+                        <span class="pos-grid-val" id="pos-long-cost">¥0.00</span>
+                    </div>
+                    <div class="pos-grid-cell">
+                        <span class="pos-grid-label">占用保证金</span>
+                        <span class="pos-grid-val" id="pos-long-margin">¥0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 空头仓位展示 -->
+            <div class="position-card" id="pos-short-card">
+                <div class="pos-header">
+                    <span class="pos-badge short">空头仓位 Short</span>
+                    <span style="color: var(--text-secondary); font-size: 11px;" id="pos-short-time">更新于 --</span>
+                </div>
+                <div class="pos-grid">
+                    <div class="pos-grid-cell">
+                        <span class="pos-grid-label">持仓克数</span>
+                        <span class="pos-grid-val" id="pos-short-grams">0.00 g</span>
+                    </div>
+                    <div class="pos-grid-cell">
+                        <span class="pos-grid-label">持仓均价</span>
+                        <span class="pos-grid-val" id="pos-short-cost">¥0.00</span>
+                    </div>
+                    <div class="pos-grid-cell">
+                        <span class="pos-grid-label">占用保证金</span>
+                        <span class="pos-grid-val" id="pos-short-margin">¥0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Apple 风格二次交易确认弹窗 -->
+<div class="modal-overlay" id="confirm-modal">
+    <div class="modal-card">
+        <h4 class="modal-title" id="modal-title-text">确认交易订单</h4>
+        <div style="background: rgba(0,0,0,0.2); border-radius: 12px; padding: 16px; font-size: 14px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--text-secondary)">交易行为</span>
+                <strong id="modal-action-text" style="color: var(--primary)">买开 (做多)</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--text-secondary)">成交克数</span>
+                <strong id="modal-grams-text">0.00 克</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--text-secondary)">预估单价</span>
+                <strong id="modal-price-text">¥0.00 / 克</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--text-secondary)">预估手续费</span>
+                <strong id="modal-fee-text">¥0.00</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;" id="modal-margin-row">
+                <span style="color: var(--text-secondary)">冻结保证金</span>
+                <strong id="modal-margin-text">¥0.00</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--card-border); padding-top: 10px; font-weight: 600;">
+                <span id="modal-sum-label">合计开仓费用</span>
+                <strong id="modal-sum-text" style="color: var(--primary)">¥0.00</strong>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeConfirmModal()">取消</button>
+            <button class="btn btn-primary" onclick="submitTradeOrder()" id="btn-modal-confirm">确认成交</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPriceData = null;
+    let accountData = null;
+    let selectedDirection = 'long'; // 'long', 'short'
+    let selectedOp = 'open'; // 'open', 'close'
+
+    // 设置输入框克数
+    function setTradeGrams(val) {
+        document.getElementById('trade-grams').value = val;
+        calculatePreview();
+    }
+
+    // 分段控件事件绑定
+    document.getElementById('btn-dir-long').addEventListener('click', function() {
+        this.classList.add('active');
+        this.style.background = 'var(--danger)';
+        document.getElementById('btn-dir-short').classList.remove('active');
+        document.getElementById('btn-dir-short').style.background = 'transparent';
+        selectedDirection = 'long';
+        calculatePreview();
+    });
+
+    document.getElementById('btn-dir-short').addEventListener('click', function() {
+        this.classList.add('active');
+        this.style.background = 'var(--success)';
+        document.getElementById('btn-dir-long').classList.remove('active');
+        document.getElementById('btn-dir-long').style.background = 'transparent';
+        selectedDirection = 'short';
+        calculatePreview();
+    });
+
+    document.getElementById('btn-op-open').addEventListener('click', function() {
+        this.classList.add('active');
+        document.getElementById('btn-op-close').classList.remove('active');
+        selectedOp = 'open';
+        document.getElementById('row-margin-preview').style.display = 'flex';
+        document.getElementById('preview-total-label').innerText = '预估开仓总费';
+        calculatePreview();
+    });
+
+    document.getElementById('btn-op-close').addEventListener('click', function() {
+        this.classList.add('active');
+        document.getElementById('btn-op-open').classList.remove('active');
+        selectedOp = 'close';
+        document.getElementById('row-margin-preview').style.display = 'none';
+        document.getElementById('preview-total-label').innerText = '预估平仓手续费';
+        calculatePreview();
+    });
+
+    document.getElementById('trade-grams').addEventListener('input', calculatePreview);
+
+    // 实时计算明细预览
+    function calculatePreview() {
+        if (!currentPriceData) return;
+        
+        const gramsInput = parseFloat(document.getElementById('trade-grams').value) || 0.0;
+        
+        // 1. 根据开仓/平仓及多/空选择确定成交价（买开/平用卖一价 Ask；卖开/平用买一价 Bid）
+        let tradePrice = 0.0;
+        const action = `${selectedOp === 'open' ? 'buy' : 'sell'}_${selectedOp === 'open' ? 'open' : 'close'}`;
+        
+        // 修正逻辑：
+        // 买开(buy_open) -> 卖一 (Ask)
+        // 卖平(sell_close) -> 买一 (Bid)
+        // 卖开(sell_open) -> 买一 (Bid)
+        // 买平(buy_close) -> 卖一 (Ask)
+        let actualAction = '';
+        if (selectedDirection === 'long') {
+            actualAction = selectedOp === 'open' ? 'buy_open' : 'sell_close';
+        } else {
+            actualAction = selectedOp === 'open' ? 'sell_open' : 'buy_close';
+        }
+        
+        if (actualAction === 'buy_open' || actualAction === 'buy_close') {
+            tradePrice = currentPriceData.ask;
+        } else {
+            tradePrice = currentPriceData.bid;
+        }
+        
+        const amount = tradePrice * gramsInput;
+        
+        // 从账户动态数据中获取最新费率配置，无则使用 SGE 默认值
+        const commission_rate = (typeof accountData !== 'undefined' && accountData && accountData.commission_rate) ? accountData.commission_rate : 0.0004;
+        const margin_rate = (typeof accountData !== 'undefined' && accountData && accountData.margin_rate) ? accountData.margin_rate : 0.10;
+        
+        const fee = gramsInput > 0 ? Math.max(amount * commission_rate, 1.0) : 0.0;
+        const margin = actualAction.endsWith('open') ? (amount * margin_rate) : 0.0;
+        const totalSum = margin + fee; // 开仓需要扣 保证金+手续费，平仓只扣手续费
+
+        // 更新前端组件
+        const formatter = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' });
+        document.getElementById('preview-market-price').innerText = `${currentPriceData.latest.toFixed(2)} 元/克`;
+        document.getElementById('preview-trade-price').innerText = `${tradePrice.toFixed(2)} 元/克`;
+        document.getElementById('preview-total-amount').innerText = formatter.format(amount);
+        document.getElementById('preview-fee').innerText = formatter.format(fee);
+        document.getElementById('preview-margin').innerText = formatter.format(margin);
+        document.getElementById('preview-total-sum').innerText = formatter.format(selectedOp === 'open' ? totalSum : fee);
+    }
+
+    // 获取并更新页面数据
+    function updateTradePageData() {
+        // 1. 获取行情
+        fetch('/api/price')
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    currentPriceData = res.data;
+                    calculatePreview();
+                    
+                    // 检测是否有被系统强制平仓的单
+                    if (res.liquidated && res.liquidated.length > 0) {
+                        alert("⚠️ 您的账户权益低于强平保证金红线(80%)！系统已强制清空您的所有多头和空头持仓！");
+                        updateTradePageData();
+                    }
+                }
+            })
+            .catch(err => console.error("Error fetching price:", err));
+
+        // 2. 获取账户与持仓状态
+        fetch('/api/account')
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    accountData = res.account;
+                    
+                    const formatter = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' });
+                    document.getElementById('equity-val').innerText = formatter.format(accountData.equity);
+                    document.getElementById('available-val').innerText = formatter.format(accountData.available_cash);
+                    document.getElementById('margin-val').innerText = formatter.format(accountData.total_margin);
+                    
+                    // 浮动盈亏增色
+                    const pnlVal = document.getElementById('float-pnl-val');
+                    pnlVal.innerText = formatter.format(accountData.total_floating_pnl);
+                    if (accountData.total_floating_pnl > 0) {
+                        pnlVal.style.color = 'var(--danger)'; // 红色代表盈利
+                    } else if (accountData.total_floating_pnl < 0) {
+                        pnlVal.style.color = 'var(--success)'; // 绿色代表亏损
+                    } else {
+                        pnlVal.style.color = 'var(--text-primary)';
+                    }
+
+                    // 风险率控制
+                    const riskVal = document.getElementById('risk-ratio-val');
+                    if (accountData.risk_ratio === 999999.0) {
+                        riskVal.innerText = '无持仓 (安全)';
+                        riskVal.style.color = 'var(--text-secondary)';
+                        document.getElementById('liquidation-warning-banner').classList.remove('active');
+                    } else {
+                        riskVal.innerText = `${accountData.risk_ratio.toFixed(2)}%`;
+                        if (accountData.risk_ratio < 120.0) {
+                            riskVal.style.color = 'var(--danger)';
+                            document.getElementById('liquidation-warning-banner').classList.add('active');
+                        } else {
+                            riskVal.style.color = 'var(--success)';
+                            document.getElementById('liquidation-warning-banner').classList.remove('active');
+                        }
+                    }
+
+                    // 更新持仓模块
+                    const positions = res.positions;
+                    positions.forEach(pos => {
+                        const now = new Date(pos.updated_at).toLocaleTimeString();
+                        if (pos.direction === 'long') {
+                            document.getElementById('pos-long-grams').innerText = `${pos.grams.toFixed(2)} 克`;
+                            document.getElementById('pos-long-cost').innerText = formatter.format(pos.avg_cost);
+                            document.getElementById('pos-long-margin').innerText = formatter.format(pos.margin);
+                            document.getElementById('pos-long-time').innerText = `更新于 ${now}`;
+                            document.getElementById('pos-long-card').style.opacity = pos.grams > 0 ? 1 : 0.45;
+                        } else {
+                            document.getElementById('pos-short-grams').innerText = `${pos.grams.toFixed(2)} 克`;
+                            document.getElementById('pos-short-cost').innerText = formatter.format(pos.avg_cost);
+                            document.getElementById('pos-short-margin').innerText = formatter.format(pos.margin);
+                            document.getElementById('pos-short-time').innerText = `更新于 ${now}`;
+                            document.getElementById('pos-short-card').style.opacity = pos.grams > 0 ? 1 : 0.45;
+                        }
+                    });
+                }
+            })
+            .catch(err => console.error("Error fetching account summary:", err));
+    }
+
+    // 二次确认弹窗交互
+    document.getElementById('btn-submit-trade').addEventListener('click', () => {
+        const gramsInput = parseFloat(document.getElementById('trade-grams').value);
+        if (!gramsInput || gramsInput <= 0) {
+            alert("请输入合法的交易克数！");
+            return;
+        }
+
+        let actualAction = '';
+        let actionLabel = '';
+        if (selectedDirection === 'long') {
+            actualAction = selectedOp === 'open' ? 'buy_open' : 'sell_close';
+            actionLabel = selectedOp === 'open' ? '买入开仓 (多头开仓)' : '卖出平仓 (多头平仓)';
+        } else {
+            actualAction = selectedOp === 'open' ? 'sell_open' : 'buy_close';
+            actionLabel = selectedOp === 'open' ? '卖出开仓 (空头开仓)' : '买入平仓 (空头平仓)';
+        }
+
+        let tradePrice = actualAction.startsWith('buy') ? currentPriceData.ask : currentPriceData.bid;
+        const amount = tradePrice * gramsInput;
+        const commission_rate = (typeof accountData !== 'undefined' && accountData && accountData.commission_rate) ? accountData.commission_rate : 0.0004;
+        const margin_rate = (typeof accountData !== 'undefined' && accountData && accountData.margin_rate) ? accountData.margin_rate : 0.10;
+        const fee = Math.max(amount * commission_rate, 1.0);
+        const margin = selectedOp === 'open' ? (amount * margin_rate) : 0.0;
+        const totalSum = margin + fee;
+
+        // 填充弹窗数据
+        const formatter = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' });
+        document.getElementById('modal-action-text').innerText = actionLabel;
+        document.getElementById('modal-action-text').style.color = selectedDirection === 'long' ? 'var(--danger)' : 'var(--success)';
+        document.getElementById('modal-grams-text').innerText = `${gramsInput.toFixed(2)} 克`;
+        document.getElementById('modal-price-text').innerText = `${formatter.format(tradePrice)} / 克`;
+        document.getElementById('modal-fee-text').innerText = formatter.format(fee);
+        
+        if (selectedOp === 'open') {
+            document.getElementById('modal-margin-row').style.display = 'flex';
+            document.getElementById('modal-margin-text').innerText = formatter.format(margin);
+            document.getElementById('modal-sum-label').innerText = '开仓占用费用 (含费)';
+            document.getElementById('modal-sum-text').innerText = formatter.format(totalSum);
+        } else {
+            document.getElementById('modal-margin-row').style.display = 'none';
+            document.getElementById('modal-sum-label').innerText = '平仓经手手续费';
+            document.getElementById('modal-sum-text').innerText = formatter.format(fee);
+        }
+
+        // 打开弹窗
+        document.getElementById('confirm-modal').classList.add('active');
+    });
+
+    function closeConfirmModal() {
+        document.getElementById('confirm-modal').classList.remove('active');
+    }
+
+    // AJAX 提交交易请求
+    function submitTradeOrder() {
+        const gramsInput = parseFloat(document.getElementById('trade-grams').value);
+        let actualAction = '';
+        if (selectedDirection === 'long') {
+            actualAction = selectedOp === 'open' ? 'buy_open' : 'sell_close';
+        } else {
+            actualAction = selectedOp === 'open' ? 'sell_open' : 'buy_close';
+        }
+
+        const btnConfirm = document.getElementById('btn-modal-confirm');
+        btnConfirm.disabled = true;
+        btnConfirm.innerText = "提交中...";
+
+        fetch('/api/trade', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                action: actualAction,
+                grams: gramsInput
+            })
+        })
+        .then(res => res.json())
+        .then(res => {
+            btnConfirm.disabled = false;
+            btnConfirm.innerText = "确认成交";
+            closeConfirmModal();
+
+            if (res.status === 'success') {
+                alert(`🎉 交易成功！\n订单号: ${res.trade.trade_no}\n类型: ${actualAction}\n结算价: ${res.trade.price.toFixed(2)} 元/克\n克数: ${res.trade.grams} g\n手续费: ${res.trade.fee.toFixed(2)} 元\n平仓盈亏: ${res.trade.realized_pnl.toFixed(2)} 元`);
+                document.getElementById('trade-grams').value = '';
+                updateTradePageData();
+            } else {
+                alert(`❌ 交易失败：${res.message}`);
+            }
+        })
+        .catch(err => {
+            btnConfirm.disabled = false;
+            btnConfirm.innerText = "确认成交";
+            closeConfirmModal();
+            console.error("AJAX Error:", err);
+            alert("❌ 网络连接故障，交易提交失败");
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        updateTradePageData();
+        
+        // 10秒定时刷新持仓与账户
+        setInterval(updateTradePageData, 10000);
+    });
+</script>
+{% endblock %}

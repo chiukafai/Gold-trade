@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+
+{% block title %}KingBot 黄金模拟交易 - 系统设置{% endblock %}
+
+{% block page_title %}系统设置{% endblock %}
+{% block page_subtitle %}调整上海黄金交易所 Au(T+D) 费率参数、溢价规则或重置模拟盘{% endblock %}
+
+{% block extra_css %}
+<style>
+    .settings-container {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 24px;
+        margin-bottom: 24px;
+    }
+
+    @media (max-width: 992px) {
+        .settings-container {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 12px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--card-border);
+        color: var(--text-primary);
+        font-family: 'Outfit', sans-serif;
+        font-size: 14px;
+        transition: var(--transition-swift);
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15);
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .form-input-hint {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-top: 6px;
+        display: block;
+    }
+
+    .save-btn {
+        background: var(--primary);
+        color: #ffffff;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: var(--transition-swift);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .save-btn:hover {
+        background: var(--primary-hover);
+        transform: translateY(-1px);
+    }
+
+    /* 危险区域卡片 */
+    .danger-card {
+        border-color: rgba(255, 69, 58, 0.2);
+        background: rgba(255, 69, 58, 0.01);
+    }
+    
+    .danger-title {
+        color: var(--danger);
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .reset-btn {
+        background: var(--danger);
+        color: #ffffff;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: var(--transition-swift);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 16px;
+    }
+
+    .reset-btn:hover {
+        background: #ff5247;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(255, 69, 58, 0.2);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <!-- 左列：参数配置表单 -->
+    <div class="glass-card" style="padding: 24px;">
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 20px;">系统参数调整</h3>
+        
+        <form id="settings-form" onsubmit="saveSettings(event)">
+            <!-- 初始本金 -->
+            <div class="form-group">
+                <label class="form-label" for="input-capital">模拟盘初始本金 (CNY)</label>
+                <input type="number" step="1000" min="1000" id="input-capital" class="form-input" required>
+                <span class="form-input-hint">用户重置模拟盘时恢复到的基础现金数额，默认为 100,000 元</span>
+            </div>
+
+            <!-- 手续费率 -->
+            <div class="form-group">
+                <label class="form-label" for="input-commission">Au(T+D) 手续费率 (单边/百分比小数)</label>
+                <input type="number" step="0.00001" min="0" max="0.1" id="input-commission" class="form-input" required>
+                <span class="form-input-hint">每次开仓或平仓的双向经手手续费比例。上海黄金交易所标准一般为 0.0004 (即 0.04%)</span>
+            </div>
+
+            <!-- 保证金比例 -->
+            <div class="form-group">
+                <label class="form-label" for="input-margin">持仓保证金比例 (倍数小数)</label>
+                <input type="number" step="0.01" min="0.01" max="1.0" id="input-margin" class="form-input" required>
+                <span class="form-input-hint">杠杆保证金比率。0.10 代表 10% 占用保证金（即 10 倍杠杆交易限制）</span>
+            </div>
+
+            <!-- 溢价调节 -->
+            <div class="form-group">
+                <label class="form-label" for="input-premium">国内金价溢价微调 (元/克)</label>
+                <input type="number" step="0.1" id="input-premium" class="form-input" required>
+                <span class="form-input-hint">针对代理源（Yahoo 国际金价换算）时的国内溢价校准值，默认为 +5.00 元/克</span>
+            </div>
+
+            <button type="submit" class="save-btn">
+                <i data-lucide="save" style="width: 16px; height: 16px;"></i>
+                保存系统配置
+            </button>
+        </form>
+    </div>
+
+    <!-- 右列：重置模拟盘 (危险区域) -->
+    <div class="glass-card danger-card" style="padding: 24px;">
+        <div class="danger-title">
+            <i data-lucide="alert-triangle" style="width: 18px; height: 18px;"></i>
+            <span>危险区域 (Danger Zone)</span>
+        </div>
+        <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.5;">
+            以下操作将对系统资产进行清盘重设，数据清空后将无法挽回，请谨慎操作：
+        </p>
+        
+        <div style="border-top: 1px solid rgba(255, 69, 58, 0.1); margin-top: 16px; padding-top: 16px;">
+            <h4 style="font-size: 13px; font-weight: 600; color: var(--text-primary);">重置所有模拟交易历史</h4>
+            <p style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">
+                这将清除所有的交易流水账单（Trades）、未成交挂单（Pending Orders）、将多头与空头持仓全部归零，并将账户现金余额回滚至您设定的初始账户本金。
+            </p>
+            
+            <button class="reset-btn" onclick="resetSimulatedAccount()">
+                <i data-lucide="refresh-cw" style="width: 15px; height: 15px;"></i>
+                一键重置模拟盘
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 自动交易配置（信号驱动） -->
+<div class="glass-card" style="padding: 24px; margin-bottom: 24px;">
+    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">🤖 自动模拟交易（信号驱动）</h3>
+    <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 20px;">
+        系统根据共识评分（6 项指标加权）自动下单：<b>评分 ≥ 阈值自动做多、≤ -阈值自动做空、评分转中性自动平仓</b>；
+        出现"极端乖离（谨慎评级）"时自动停止开新仓。自动交易与手动交易共用账户、保证金与强平风控。
+    </p>
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <input type="checkbox" id="auto-trade-enabled" style="accent-color: var(--primary); width: 18px; height: 18px; cursor: pointer;">
+            <span style="font-size: 14px; font-weight: 500; color: var(--text-primary);">启用自动交易</span>
+        </label>
+
+        <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="auto-trade-grams">单笔开仓克数</label>
+            <input type="number" step="1" min="1" max="1000" id="auto-trade-grams" class="form-input" required>
+            <span class="form-input-hint">每次自动开仓使用的克数（默认 10 克；10 倍杠杆下 10 克约占用 900 元保证金）</span>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="auto-trade-interval">轮询间隔</label>
+            <select id="auto-trade-interval" class="form-input">
+                <option value="60">1 分钟</option>
+                <option value="300" selected>5 分钟</option>
+                <option value="900">15 分钟</option>
+                <option value="1800">30 分钟</option>
+            </select>
+            <span class="form-input-hint">每隔多久检查一次评分并决定是否下单（越短越灵敏，建议 ≥5 分钟避免频繁操作）</span>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="auto-trade-threshold">开仓阈值（评分，0.1~0.9）</label>
+            <input type="number" step="0.05" min="0.1" max="0.9" id="auto-trade-threshold" class="form-input" required>
+            <span class="form-input-hint">评分绝对值超过该值才开仓。越大越谨慎（信号越强才出手），默认 0.5</span>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="auto-trade-strategy">策略模式</label>
+            <select id="auto-trade-strategy" class="form-input">
+                <option value="consensus">共识评分（6 项加权 · 趋势跟随）</option>
+                <option value="resonance">多指标共振（模拟器 · 逢低吸纳/高位套现）</option>
+            </select>
+            <span class="form-input-hint">「多指标共振」启用模拟器的 RSI/布林/MACD/量能策略：上升趋势 RSI 超卖或触下轨自动开多，高位 RSI 超买或触上轨且 MACD 拐点自动套现</span>
+        </div>
+
+        <button class="save-btn" onclick="saveAutoTrade()" style="align-self: flex-start;">
+            <i data-lucide="bot" style="width: 16px; height: 16px;"></i>
+            保存自动交易设置
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 页面载入时获取现有配置
+    function loadConfig() {
+        fetch('/api/config')
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    const config = res.config;
+                    document.getElementById('input-capital').value = config.initial_capital;
+                    document.getElementById('input-commission').value = config.commission_rate;
+                    document.getElementById('input-margin').value = config.margin_rate;
+                    document.getElementById('input-premium').value = config.domestic_premium;
+                } else {
+                    alert("获取配置失败：" + res.message);
+                }
+            })
+            .catch(err => console.error("Error loading config:", err));
+    }
+
+    // 保存系统设置
+    function saveSettings(event) {
+        event.preventDefault();
+        
+        const initial_capital = parseFloat(document.getElementById('input-capital').value);
+        const commission_rate = parseFloat(document.getElementById('input-commission').value);
+        const margin_rate = parseFloat(document.getElementById('input-margin').value);
+        const domestic_premium = parseFloat(document.getElementById('input-premium').value);
+
+        fetch('/api/config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                initial_capital: initial_capital,
+                commission_rate: commission_rate,
+                margin_rate: margin_rate,
+                domestic_premium: domestic_premium
+            })
+        })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === 'success') {
+                alert("🎉 系统配置已成功保存！\n新修改的费率与溢价调整将即刻应用于新的报价与交易执行中。");
+                loadConfig();
+            } else {
+                alert("❌ 配置保存失败：" + res.message);
+            }
+        })
+        .catch(err => {
+            console.error("Error saving settings:", err);
+            alert("❌ 保存出错，网络超时");
+        });
+    }
+
+    // 重置账户数据
+    function resetSimulatedAccount() {
+        const confirm1 = confirm("⚠️ 警告：您即将删除所有的历史持仓和交易记录流水！\n此操作不可逆。是否继续？");
+        if (!confirm1) return;
+        
+        const confirm2 = confirm("🔒 二次核实：确定要将模拟账户资产完全重置并回滚现金吗？");
+        if (!confirm2) return;
+
+        fetch('/api/reset', { method: 'POST' })
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    alert("🎉 模拟账户重置成功！所有持仓已清空，现金余额已回滚。");
+                    window.location.href = '/';
+                } else {
+                    alert("❌ 重置失败：" + res.message);
+                }
+            })
+            .catch(err => {
+                console.error("Error resetting account:", err);
+                alert("❌ 网络堵塞，重置失败");
+            });
+    }
+
+    // 载入自动交易配置
+    function loadAutoTrade() {
+        fetch('/api/auto_trade')
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    const c = res.config;
+                    document.getElementById('auto-trade-enabled').checked = c.auto_trade_enabled;
+                    document.getElementById('auto-trade-grams').value = c.auto_trade_grams;
+                    document.getElementById('auto-trade-interval').value = String(c.auto_trade_interval);
+                    document.getElementById('auto-trade-threshold').value = c.auto_trade_threshold;
+                    document.getElementById('auto-trade-strategy').value = c.strategy_mode || 'consensus';
+                }
+            })
+            .catch(err => console.error("Error loading auto trade config:", err));
+    }
+
+    // 保存自动交易配置
+    function saveAutoTrade() {
+        const enabled = document.getElementById('auto-trade-enabled').checked;
+        const grams = parseFloat(document.getElementById('auto-trade-grams').value);
+        const interval = parseInt(document.getElementById('auto-trade-interval').value, 10);
+        const threshold = parseFloat(document.getElementById('auto-trade-threshold').value);
+        const strategy_mode = document.getElementById('auto-trade-strategy').value;
+
+        fetch('/api/auto_trade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                auto_trade_enabled: enabled,
+                auto_trade_grams: grams,
+                auto_trade_interval: interval,
+                auto_trade_threshold: threshold,
+                strategy_mode: strategy_mode
+            })
+        })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === 'success') {
+                alert("🎉 " + res.message + "（每" + Math.round(interval/60) + "分钟检查一次评分）");
+                loadAutoTrade();
+            } else {
+                alert("❌ 保存失败：" + res.message);
+            }
+        })
+        .catch(err => {
+            console.error("Error saving auto trade:", err);
+            alert("❌ 保存出错，网络超时");
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadConfig();
+        loadAutoTrade();
+    });
+</script>
+{% endblock %}

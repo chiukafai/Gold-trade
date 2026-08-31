@@ -1,0 +1,3090 @@
+{% extends "base.html" %}
+
+{% block title %}KingBot 黄金模拟交易 - 仪表盘{% endblock %}
+
+{% block page_title %}交易仪表盘{% endblock %}
+{% block page_subtitle %}上海黄金交易所 Au(T+D) 双向模拟交易数据总览{% endblock %}
+
+{% block extra_css %}
+<!-- 引入 ECharts 5 CDN (带自动切换国内镜像源) -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js" onerror="this.onerror=null;this.src='https://cdn.staticfile.org/echarts/5.4.3/echarts.min.js';"></script>
+
+<style>
+    /* 顶部指标卡片网格 — 5列等宽 */
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+    
+    .metric-card {
+        padding: 20px;
+    }
+    
+    .metric-label {
+        font-size: 13px;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 8px;
+        display: block;
+    }
+    
+    .metric-val {
+        font-family: 'Outfit', sans-serif;
+        font-size: 36px;
+        font-weight: 600;
+        letter-spacing: -1px;
+    }
+    
+    .metric-footer {
+        margin-top: 8px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* 中部图表与快速下单双列布局 — 3:2 与上排5列KPI对齐 */
+    .dashboard-middle-grid {
+        display: grid;
+        grid-template-columns: 3fr 2fr;
+        gap: 20px;
+        margin-bottom: 24px;
+        align-items: start;
+    }
+    
+    @media (max-width: 992px) {
+        .dashboard-middle-grid {
+            grid-template-columns: 1fr;
+        }
+        .metrics-grid {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+    @media (max-width: 640px) {
+        .metrics-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    
+    .chart-container {
+        width: 100%;
+        height: 500px;
+        margin-top: 16px;
+    }
+    
+    /* 快速下单组件 */
+    .quick-trade-card {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    
+    .quick-action-btns {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    
+    .quick-btn {
+        width: 100%;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid var(--card-border);
+        background: rgba(255, 255, 255, 0.02);
+        color: var(--text-primary);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: var(--transition-swift);
+    }
+    
+    .quick-btn:hover {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.15);
+        transform: translateY(-1px);
+    }
+    
+    .quick-btn.buy:hover {
+        border-color: rgba(255, 69, 58, 0.3);
+        box-shadow: 0 0 10px rgba(255, 69, 58, 0.08);
+    }
+    .quick-btn.sell:hover {
+        border-color: rgba(48, 209, 88, 0.3);
+        box-shadow: 0 0 10px rgba(48, 209, 88, 0.08);
+    }
+    
+    .quick-btn-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+    }
+    
+    .quick-btn.buy .quick-btn-icon {
+        background: rgba(255, 69, 58, 0.15);
+        color: var(--danger);
+    }
+    .quick-btn.sell .quick-btn-icon {
+        background: rgba(48, 209, 88, 0.15);
+        color: var(--success);
+    }
+
+    /* 预警闪烁动画 */
+    @keyframes pulse-warn {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+
+    /* 价格提醒面板 */
+    .alert-panel {
+        display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        padding: 8px 12px; border-radius: 8px;
+        background: rgba(255, 152, 0, 0.05); border: 1px solid rgba(255, 152, 0, 0.12);
+        font-size: 11px; color: var(--text-secondary);
+    }
+    .alert-panel input[type="number"] {
+        width: 70px; padding: 3px 6px; border-radius: 4px;
+        background: rgba(255,255,255,0.05); border: 1px solid var(--card-border);
+        color: var(--text-primary); font-size: 12px; font-family: 'Outfit';
+    }
+    .alert-panel button {
+        padding: 3px 8px; border-radius: 4px; border: none; cursor: pointer;
+        background: var(--primary); color: #fff; font-size: 11px;
+    }
+    .alert-badge {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 2px 8px; border-radius: 10px; font-size: 10px;
+        background: rgba(255,152,0,0.1); color: #ff9800;
+    }
+    .alert-badge .remove-btn { cursor: pointer; opacity: 0.6; }
+    .alert-badge .remove-btn:hover { opacity: 1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- 4大指标汇总行 -->
+<div class="metrics-grid">
+    <!-- 金价指标卡 -->
+    <div class="card-hero metric-card">>
+        <span class="metric-label">实时基准价</span>
+        <div class="metric-val" id="metric-latest-price">--.--</div>
+        <div class="metric-footer">
+            <span class="live-price-indicator" id="metric-price-dot"></span>
+            <span id="metric-price-source">SGE 黄金价格</span>
+        </div>
+    </div>
+    
+    <!-- 权益指标卡 -->
+    <div class="card-hero metric-card">>
+        <span class="metric-label">账户总权益 (Equity)</span>
+        <div class="metric-val" id="metric-equity">¥100,000.00</div>
+        <div class="metric-footer">
+            <i data-lucide="wallet" style="width: 14px; height: 14px;"></i>
+            <span>可用余额 + 持仓盈亏</span>
+        </div>
+    </div>
+    
+    <!-- 可用资金指标卡 -->
+    <div class="card-hero metric-card">>
+        <span class="metric-label">可用交易资金 (Available)</span>
+        <div class="metric-val" id="metric-available-cash">¥100,000.00</div>
+        <div class="metric-footer">
+            <i data-lucide="dollar-sign" style="width: 14px; height: 14px;"></i>
+            <span>可用于新建仓位开仓的资金</span>
+        </div>
+    </div>
+    
+    <!-- 保证金指标卡 -->
+    <div class="card-hero metric-card">>
+        <span class="metric-label">占用保证金 (Locked)</span>
+        <div class="metric-val" id="metric-margin">¥0.00</div>
+        <div class="metric-footer">
+            <i data-lucide="lock" style="width: 14px; height: 14px;"></i>
+            <span>杠杆持仓所需担保金</span>
+        </div>
+    </div>
+
+    <!-- 盈亏指标卡 -->
+    <div class="card-hero metric-card">>
+        <span class="metric-label">持仓浮动盈亏</span>
+        <div class="metric-val" id="metric-pnl">¥0.00</div>
+        <div class="metric-footer">
+            <i data-lucide="trending-up" style="width: 14px; height: 14px;" id="pnl-icon"></i>
+            <span id="metric-pnl-label">当前无活动持仓</span>
+        </div>
+    </div>
+</div>
+
+<!-- 价格提醒面板 -->
+<div class="alert-panel" style="margin-bottom: 16px;">
+    <span style="font-weight: 600; color: var(--text-primary);">🔔 价格提醒</span>
+    <span>触发价：</span>
+    <input type="number" id="alert-price-input" placeholder="如 950.00" step="0.01" />
+    <select id="alert-direction" style="padding: 3px 6px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid var(--card-border); color: var(--text-primary); font-size: 11px;">
+        <option value="above">≥ 上穿</option>
+        <option value="below">≤ 下穿</option>
+    </select>
+    <button onclick="addPriceAlert()">添加</button>
+    <span id="alert-list" style="display: flex; gap: 6px; flex-wrap: wrap; margin-left: 8px;"></span>
+</div>
+
+<div class="dashboard-middle-grid">
+    <!-- 左列：行情折线面积图 -->
+    <div class="card-content" style="padding: 24px;">>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <!-- 分析模式与周期切换 -->
+            <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                <!-- 模式切换 -->
+                <div style="display: flex; gap: 8px;">
+                    <button class="segment-btn active" id="tab-trend" onclick="switchChartTab('trend')" style="padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 6px; background: rgba(10, 132, 255, 0.15); color: var(--primary); border: 1px solid rgba(10, 132, 255, 0.25); cursor: pointer; transition: var(--transition-swift);">走势与技术指标</button>
+                    <button class="segment-btn" id="tab-macro" onclick="switchChartTab('macro')" style="padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 6px; background: transparent; color: var(--text-secondary); border: 1px solid var(--card-border); cursor: pointer; transition: var(--transition-swift);">宏观因子对照</button>
+                </div>
+                <!-- 周期选择 -->
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary);">
+                    <span>周期:</span>
+                    <div class="segmented-control" id="timeframe-selector" style="margin-bottom: 0; padding: 2px; border-radius: 8px; display: flex; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border);">
+                        <button class="segment-btn" id="timeframe-15m" onclick="changeTimeframe('15m')" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; transition: var(--transition-swift);">15M</button>
+                        <button class="segment-btn" id="timeframe-1h" onclick="changeTimeframe('1h')" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; transition: var(--transition-swift);">1H</button>
+                        <button class="segment-btn" id="timeframe-4h" onclick="changeTimeframe('4h')" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; transition: var(--transition-swift);">4H</button>
+                        <button class="segment-btn active" id="timeframe-1d" onclick="changeTimeframe('1d')" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: var(--primary); color: #ffffff; border: none; cursor: pointer; transition: var(--transition-swift);">D (日线)</button>
+                    </div>
+                </div>
+            </div>
+            <!-- 时间跨度选择 -->
+            <div class="segmented-control" style="margin-bottom: 0; padding: 2px; border-radius: 8px; display: flex; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border);">
+                <button class="segment-btn" id="chart-range-7d" onclick="changeChartRange('7d')" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer;">7天</button>
+                <button class="segment-btn" id="chart-range-30d" onclick="changeChartRange('30d')" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: var(--primary); color: #ffffff; border: none; cursor: pointer;">30天</button>
+                <button class="segment-btn" id="chart-range-90d" onclick="changeChartRange('90d')" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer;">90天</button>
+                <button class="segment-btn" id="chart-range-1y" onclick="changeChartRange('1y')" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer;">1年</button>
+            </div>
+        </div>
+        <!-- 走势与技术指标开关控制栏 -->
+        <div id="controls-trend" style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 10px; width: 100%;">
+            <!-- 均线与布林带 -->
+            <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--text-secondary);">
+                <span style="font-weight: 500; color: var(--text-primary);">图表类型：</span>
+                <div style="display: flex; gap: 3px; padding: 2px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border);">
+                    <button class="segment-btn active" id="chart-type-line" onclick="toggleChartType('line')" style="padding: 3px 8px; font-size: 11px; border-radius: 4px; background: var(--primary); color: #fff; border: none; cursor: pointer; transition: var(--transition-swift);">折线</button>
+                    <button class="segment-btn" id="chart-type-candle" onclick="toggleChartType('candle')" style="padding: 3px 8px; font-size: 11px; border-radius: 4px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">K线</button>
+                </div>
+                <span style="font-weight: 500; color: var(--text-primary); margin-left: 12px;">主图指标：</span>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="toggle-ma5" checked onchange="toggleIndicators()" style="cursor: pointer; accent-color: var(--primary);"> MA5
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="toggle-ma20" checked onchange="toggleIndicators()" style="cursor: pointer; accent-color: var(--primary);"> MA20
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="toggle-ma60" onchange="toggleIndicators()" style="cursor: pointer; accent-color: var(--primary);"> MA60
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="toggle-ma120" onchange="toggleIndicators()" style="cursor: pointer; accent-color: var(--primary);"> MA120
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; margin-left: 8px;">
+                    <input type="checkbox" id="toggle-bollinger" onchange="toggleIndicators()" style="cursor: pointer; accent-color: var(--primary);"> 布林带
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin-left: auto; color: var(--primary); font-weight: 600;">
+                    <input type="checkbox" id="toggle-forecast" onchange="toggleForecast()" style="cursor: pointer; accent-color: var(--primary);"> 📊 7日趋势外推（统计模型，非预测工具）
+                </label>
+            </div>
+            <!-- 副图指标选择（分组布局） -->
+            <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                <span style="font-weight: 500; color: var(--text-primary); font-size: 12px;">副图指标</span>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start;">
+                    <!-- 关闭副图 -->
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span style="font-size: 9px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; padding-left: 4px;">副图</span>
+                        <div style="display: flex; gap: 3px; padding: 3px; border-radius: 8px; background: rgba(201, 100, 66, 0.04); border: 0.5px solid rgba(201, 100, 66, 0.1);">
+                            <button class="segment-btn" id="subplot-none" onclick="changeSubplotIndicator('none')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">关闭</button>
+                        </div>
+                    </div>
+                    <!-- 趋势判断 -->
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span style="font-size: 9px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; padding-left: 4px;">趋势判断</span>
+                        <div style="display: flex; gap: 3px; padding: 3px; border-radius: 8px; background: rgba(201, 100, 66, 0.04); border: 0.5px solid rgba(201, 100, 66, 0.1);">
+                            <button class="segment-btn active" id="subplot-macd" onclick="changeSubplotIndicator('macd')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: var(--primary); color: #fff; border: none; cursor: pointer; transition: var(--transition-swift);">MACD</button>
+                            <button class="segment-btn" id="subplot-dmi" onclick="changeSubplotIndicator('dmi')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">DMI</button>
+                            <button class="segment-btn" id="subplot-roc" onclick="changeSubplotIndicator('roc')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">ROC</button>
+                        </div>
+                    </div>
+                    <!-- 超买超卖 -->
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span style="font-size: 9px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; padding-left: 4px;">超买超卖</span>
+                        <div style="display: flex; gap: 3px; padding: 3px; border-radius: 8px; background: rgba(201, 100, 66, 0.04); border: 0.5px solid rgba(201, 100, 66, 0.1);">
+                            <button class="segment-btn" id="subplot-rsi" onclick="changeSubplotIndicator('rsi')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">RSI</button>
+                            <button class="segment-btn" id="subplot-kdj" onclick="changeSubplotIndicator('kdj')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">KDJ</button>
+                            <button class="segment-btn" id="subplot-wr" onclick="changeSubplotIndicator('wr')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">W&R</button>
+                            <button class="segment-btn" id="subplot-cci" onclick="changeSubplotIndicator('cci')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">CCI</button>
+                            <button class="segment-btn" id="subplot-bias" onclick="changeSubplotIndicator('bias')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">BIAS</button>
+                        </div>
+                    </div>
+                    <!-- 量价资金 -->
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span style="font-size: 9px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; padding-left: 4px;">量价资金</span>
+                        <div style="display: flex; gap: 3px; padding: 3px; border-radius: 8px; background: rgba(201, 100, 66, 0.04); border: 0.5px solid rgba(201, 100, 66, 0.1);">
+                            <button class="segment-btn" id="subplot-obv" onclick="changeSubplotIndicator('obv')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">OBV</button>
+                            <button class="segment-btn" id="subplot-cr" onclick="changeSubplotIndicator('cr')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">CR</button>
+                            <button class="segment-btn" id="subplot-volume" onclick="changeSubplotIndicator('volume')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">VOL</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- 宏观因子开关控制栏 -->
+        <div id="controls-macro" style="display: none; gap: 16px; margin-top: 12px; font-size: 12px; color: var(--text-secondary); border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 10px; align-items: center; flex-wrap: wrap; width: 100%;">
+            <span style="font-weight: 500; color: var(--text-primary);">对照因子：</span>
+            <div class="segmented-control" style="margin-bottom: 0; padding: 2px; border-radius: 6px; display: flex; background: rgba(255,255,255,0.02); border: 1px solid var(--card-border);">
+                <button class="segment-btn" id="macro-symbol-dxy" onclick="changeMacroSymbol('dxy')" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; background: var(--primary); color: #ffffff; border: none; cursor: pointer; transition: var(--transition-swift);">美元指数 (DXY)</button>
+                <button class="segment-btn" id="macro-symbol-tnx" onclick="changeMacroSymbol('tnx')" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: var(--transition-swift);">美债 10Y 收益率 (TNX)</button>
+            </div>
+            <!-- 相关系数卡片 -->
+            <div id="correlation-card" style="margin-left: auto; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; background: rgba(10, 132, 255, 0.08); border: 1px solid rgba(10, 132, 255, 0.15); font-size: 11px;">
+                <span style="color: var(--text-secondary);">Pearson 相关系数 (r)：</span>
+                <strong id="correlation-val" style="color: var(--primary); font-family: 'Outfit'; font-size: 12px;">--</strong>
+                <span id="correlation-desc" style="color: var(--text-secondary); border-left: 1px solid rgba(255,255,255,0.1); padding-left: 8px;">计算中...</span>
+            </div>
+        </div>
+        <div id="gold-trend-chart" class="chart-container"></div>
+        <!-- 缺陷4修复：预测免责声明（开启趋势外推时显示） -->
+        <div id="forecast-disclaimer" style="display: none; margin-top: 8px; padding: 8px 12px; border-radius: 8px; background: rgba(255, 159, 10, 0.08); border: 1px solid rgba(255, 159, 10, 0.2); font-size: 11px; color: var(--text-secondary); line-height: 1.6;"></div>
+        <div id="forecast-confidence-bar" style="display: none; margin-top: 4px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, rgba(48,209,88,0.6) 0%, rgba(212,168,83,0.5) 50%, rgba(255,69,58,0.5) 100%); position: relative;">
+            <span style="position: absolute; left: 2%; top: 8px; font-size: 9px; color: rgba(48,209,88,0.8);">高置信度</span>
+            <span style="position: absolute; right: 2%; top: 8px; font-size: 9px; color: rgba(255,69,58,0.8);">低置信度</span>
+        </div>
+        <!-- 💡 动态量化多因子趋势与宏观指标解析面板 -->
+        <div id="chart-analysis-panel" style="margin-top: 16px; padding: 16px 0 0 0; border-top: 1px solid rgba(255, 255, 255, 0.05); display: flex; flex-direction: column; gap: 10px; width: 100%;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span id="analysis-icon" style="font-size: 14px;">📈</span>
+                    <h4 id="analysis-title" style="margin: 0; font-size: 13px; font-weight: 600; color: var(--primary);">量化技术指标趋势解析</h4>
+                </div>
+                <div id="analysis-status" style="font-size: 11px; color: var(--text-secondary); background: rgba(255,255,255,0.03); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05);">智能多因子分析已就绪</div>
+            </div>
+            <div id="analysis-content" style="font-size: 11px; color: var(--text-secondary); line-height: 1.6; font-weight: 500;">
+                正在获取并分析行情指标数据，请稍候...
+            </div>
+        </div>
+    </div>
+    
+    <!-- 右列：快捷双向开仓与多空量化决策风向标 -->
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+        <!-- 一键交易面板 -->
+        <div class="card-content quick-trade-card" style="padding: 22px; display: flex; flex-direction: column; justify-content: space-between; min-height: 360px; margin-bottom: 0;">
+            <div>
+                <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 6px; margin-top: 0; color: var(--text-primary); display: flex; align-items: center; gap: 8px;"><span style="color: var(--primary); font-size: 18px;">⚡</span>快捷一键交易</h3>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.5;">以当前买一/卖一最新价一键成交（多头以卖一价成交，空头以买一价成交）</p>
+                
+                <div class="quick-action-btns" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- 做多 10g/50g -->
+                    <button class="quick-btn buy" onclick="quickTrade('buy_open', 10)" style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(212, 168, 83, 0.2); background: rgba(212, 168, 83, 0.05); color: var(--text-primary); cursor: pointer; text-align: left; transition: var(--transition-swift);">
+                        <span id="label-buy-10" style="font-size: 12px;">买入做多 10 克 @ ¥--.--</span>
+                        <div class="quick-btn-icon" style="padding: 5px; border-radius: 6px; background: rgba(212, 168, 83, 0.2); color: var(--accent-gold); display: flex; align-items: center;"><i data-lucide="trending-up" style="width:13px; height:13px;"></i></div>
+                    </button>
+                    <button class="quick-btn buy" onclick="quickTrade('buy_open', 50)" style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(212, 168, 83, 0.2); background: rgba(212, 168, 83, 0.05); color: var(--text-primary); cursor: pointer; text-align: left; transition: var(--transition-swift);">
+                        <span id="label-buy-50" style="font-size: 12px;">买入做多 50 克 @ ¥--.--</span>
+                        <div class="quick-btn-icon" style="padding: 5px; border-radius: 6px; background: rgba(212, 168, 83, 0.2); color: var(--accent-gold); display: flex; align-items: center;"><i data-lucide="trending-up" style="width:13px; height:13px;"></i></div>
+                    </button>
+                    
+                    <!-- 做空 10g/50g -->
+                    <button class="quick-btn sell" onclick="quickTrade('sell_open', 10)" style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(26, 107, 82, 0.25); background: rgba(26, 107, 82, 0.05); color: var(--text-primary); cursor: pointer; text-align: left; transition: var(--transition-swift);">
+                        <span id="label-sell-10" style="font-size: 12px;">卖出做空 10 克 @ ¥--.--</span>
+                        <div class="quick-btn-icon" style="padding: 5px; border-radius: 6px; background: rgba(26, 107, 82, 0.2); color: var(--success); display: flex; align-items: center;"><i data-lucide="trending-down" style="width:13px; height:13px;"></i></div>
+                    </button>
+                    <button class="quick-btn sell" onclick="quickTrade('sell_open', 50)" style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(26, 107, 82, 0.25); background: rgba(26, 107, 82, 0.05); color: var(--text-primary); cursor: pointer; text-align: left; transition: var(--transition-swift);">
+                        <span id="label-sell-50" style="font-size: 12px;">卖出做空 50 克 @ ¥--.--</span>
+                        <div class="quick-btn-icon" style="padding: 5px; border-radius: 6px; background: rgba(26, 107, 82, 0.2); color: var(--success); display: flex; align-items: center;"><i data-lucide="trending-down" style="width:13px; height:13px;"></i></div>
+                    </button>
+                </div>
+            </div>
+            
+            <div style="border-top: 1px solid var(--card-border); padding-top: 14px; margin-top: 14px; display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary);">
+                <span>可用资金：<strong style="color: var(--text-primary); font-size: 13px;" id="quick-cash-amount">¥--.--</strong></span>
+                <a href="/trade" style="color: var(--primary); text-decoration: none; font-weight: 600; font-size: 12px;">更多交易选项 →</a>
+            </div>
+        </div>
+        
+        <!-- 多空决策风向标面板 -->
+        <div class="card-content" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="font-size: 16px; font-weight: 600; margin: 0; color: var(--text-primary); display: flex; align-items: center; gap: 8px;"><span style="color: var(--primary); font-size: 18px;">🔮</span>量化多空风向标</h3>
+                <span id="consensus-rating-badge" class="pos-badge neutral" style="font-size: 12px; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.05); color: var(--text-secondary); font-weight: 500;">计算中...</span>
+                <span id="extreme-divergence-warn" style="display: none; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(255, 152, 0, 0.12); border: 1px solid rgba(255, 152, 0, 0.3); color: #ff9800; font-weight: 600; cursor: help;">⚠️ 极端乖离</span>
+            </div>
+            
+            <!-- Gauge 图表容器 -->
+            <div id="consensus-gauge" style="width: 100%; height: 145px; margin-top: -12px;"></div>
+            
+            <!-- 指标拆解进度条 -->
+            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; margin-top: -5px;">
+                <div style="font-weight: 600; color: var(--text-primary); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; margin-bottom: 2px; font-size: 13px;">技术指标多空贡献明细</div>
+                
+                <!-- MA -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">均线排列 (MA)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-ma" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-ma-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+                
+                <!-- MACD -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">动能指标 (MACD)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-macd" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-macd-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+
+                <!-- RSI -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">强弱动量 (RSI)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-rsi" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-rsi-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+
+                <!-- KDJ -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">随机交叉 (KDJ)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-kdj" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-kdj-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+
+                <!-- CCI -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">通道指标 (CCI)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-cci" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-cci-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+
+                <!-- BOLL -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">布林带边界 (BOLL)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-boll" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-boll-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+
+                <!-- W&R -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">威廉指标 (W&R)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-wr" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-wr-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+
+                <!-- DMI -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">趋向指标 (DMI)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-dmi" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-dmi-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+
+                <!-- BIAS -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">乖离率 (BIAS)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-bias" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-bias-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+
+                <!-- OBV -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">能量潮 (OBV)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-obv" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-obv-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+
+                <!-- ROC -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">变动率 (ROC)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-roc" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-roc-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+
+                <!-- CR -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-secondary);">中间意愿 (CR)</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 100px; height: 7px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative;">
+                            <div id="bar-cr" style="height: 100%; width: 0%; background: var(--primary); transition: all 0.3s; position: absolute; left: 50%;"></div>
+                        </div>
+                        <span id="score-cr-val" style="width: 32px; text-align: right; font-family: 'Outfit'; font-weight: 600; font-size: 11px;">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 解读文本建议 -->
+            <div id="consensus-advice-card" style="font-size: 11px; color: var(--text-secondary); background: rgba(255,255,255,0.02); border: 1px solid var(--card-border); padding: 10px; border-radius: 8px; line-height: 1.5;">
+                正在评估各技术指标的多空分布状态...
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 底部持仓概要列 -->
+<div class="card-content" style="padding: 24px; margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h3 style="font-size: 15px; font-weight: 600;">双向持仓总览</h3>
+        <span style="font-size: 12px; color: var(--text-secondary)">风险率：<strong id="pos-risk-ratio">--%</strong></span>
+    </div>
+    
+    <div class="trade-layout" style="grid-template-columns: 1fr 1fr; gap: 20px;">
+        <!-- 多头持仓概要 -->
+        <div class="position-card" id="home-long-card" style="margin-bottom: 0;">
+            <div class="pos-header">
+                <span class="pos-badge long">多头持仓 Long</span>
+                <span style="font-size: 13px; font-weight: 600; color: var(--text-primary)" id="home-long-grams">0.00 克</span>
+            </div>
+            <div class="pos-grid" style="margin-top: 12px;">
+                <div class="pos-grid-cell">
+                    <span class="pos-grid-label">开仓成本均价</span>
+                    <span class="pos-grid-val" id="home-long-cost">¥0.00</span>
+                </div>
+                <div class="pos-grid-cell">
+                    <span class="pos-grid-label">动态占用保证金</span>
+                    <span class="pos-grid-val" id="home-long-margin">¥0.00</span>
+                </div>
+                <div class="pos-grid-cell">
+                    <span class="pos-grid-label">动态浮动盈亏</span>
+                    <span class="pos-grid-val" id="home-long-pnl">¥0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 空头持仓概要 -->
+        <div class="position-card" id="home-short-card" style="margin-bottom: 0;">
+            <div class="pos-header">
+                <span class="pos-badge short">空头持仓 Short</span>
+                <span style="font-size: 13px; font-weight: 600; color: var(--text-primary)" id="home-short-grams">0.00 克</span>
+            </div>
+            <div class="pos-grid" style="margin-top: 12px;">
+                <div class="pos-grid-cell">
+                    <span class="pos-grid-label">开仓成本均价</span>
+                    <span class="pos-grid-val" id="home-short-cost">¥0.00</span>
+                </div>
+                <div class="pos-grid-cell">
+                    <span class="pos-grid-label">动态占用保证金</span>
+                    <span class="pos-grid-val" id="home-short-margin">¥0.00</span>
+                </div>
+                <div class="pos-grid-cell">
+                    <span class="pos-grid-label">动态浮动盈亏</span>
+                    <span class="pos-grid-val" id="home-short-pnl">¥0.00</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 买卖信号诊断报告弹窗 (Diagnostic Modal) -->
+<div id="diagnostic-modal" onclick="closeDiagnosticModal(event)" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center; transition: var(--transition-swift);">
+    <div onclick="event.stopPropagation()" style="width: 90%; max-width: 520px; background: rgba(28, 28, 40, 0.95); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 16px; position: relative;">
+        <!-- 关闭按钮 -->
+        <button onclick="closeDiagnosticModal(event)" style="position: absolute; right: 16px; top: 16px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 18px; line-height: 1;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></button>
+        
+        <!-- 头部 -->
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div id="diagnostic-badge" style="padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; color: #ffffff; text-transform: uppercase;">买入信号</div>
+            <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0;" id="diagnostic-title">信号决策诊断报告</h3>
+        </div>
+        
+        <!-- 日期与成交价格 -->
+        <div style="display: flex; justify-content: space-between; padding: 10px 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.03); font-size: 11px; color: var(--text-secondary);">
+            <div>诊断日期: <span id="diagnostic-date" style="color: var(--text-primary); font-weight: 500;">-</span></div>
+            <div>成交价格: <span id="diagnostic-price" style="color: var(--primary); font-weight: 600;">-</span></div>
+        </div>
+        
+        <!-- 诊断详情维度列表 -->
+        <div style="display: flex; flex-direction: column; gap: 12px; max-height: 320px; overflow-y: auto; padding-right: 4px;" id="diagnostic-details-container">
+            <!-- 动态生成细节 -->
+        </div>
+        
+        <!-- 底部 -->
+        <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+            <button onclick="closeDiagnosticModal(event)" style="padding: 8px 16px; font-size: 11px; font-weight: 600; border-radius: 6px; background: var(--primary); color: #ffffff; border: none; cursor: pointer; transition: var(--transition-swift);">确认并返回</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let trendChart = null;
+    let currentChartRange = '30d';
+    let currentPriceData = null;
+    let cachedChartData = null;
+    let activeChartTab = 'trend'; // 'trend' 或 'macro'
+    let currentMacroSymbol = 'dxy'; // 'dxy' 或 'tnx'
+    let cachedMacroData = null;
+    let currentSubplotIndicator = 'macd';
+    let chartType = 'line'; // 'line' 或 'candle'
+
+    function toggleChartType(type) {
+        chartType = type;
+        const btnLine = document.getElementById('chart-type-line');
+        const btnCandle = document.getElementById('chart-type-candle');
+        if (btnLine) {
+            btnLine.style.background = type === 'line' ? 'var(--primary)' : 'transparent';
+            btnLine.style.color = type === 'line' ? '#fff' : 'var(--text-secondary)';
+        }
+        if (btnCandle) {
+            btnCandle.style.background = type === 'candle' ? 'var(--primary)' : 'transparent';
+            btnCandle.style.color = type === 'candle' ? '#fff' : 'var(--text-secondary)';
+        }
+        if (cachedChartData && activeChartTab === 'trend') {
+            updateChartOption();
+        }
+    }
+    let cachedForecastData = null;
+    
+    // 弹窗状态防抖标志
+    let isModalOpen = false;
+    let isModalClosing = false;
+
+    // 初始化 ECharts 图表
+    function initTrendChart() {
+        const chartDom = document.getElementById('gold-trend-chart');
+        trendChart = echarts.init(chartDom);
+        
+        // 自适应窗口变化
+        window.addEventListener('resize', () => trendChart && trendChart.resize());
+        
+        // 绑定买卖信号点击诊断
+        trendChart.on('click', function(params) {
+            if (isModalClosing || isModalOpen) return;
+            
+            if (params.componentType === 'markPoint') {
+                const date = params.data.coord[0];
+                const price = params.data.coord[1];
+                const type = params.data.value; // 'B' 或 'S'
+                showSignalDiagnostic(date, price, type);
+            }
+        });
+
+        renderChartData(currentChartRange);
+    }
+
+    // 切换图表范围
+    function changeChartRange(rangeStr) {
+        if (currentTimeframe === '15m' && rangeStr === '7d') {
+            rangeStr = '5d';
+        }
+        currentChartRange = rangeStr;
+        
+        // 更新按钮激活样式
+        const ranges = ['7d', '30d', '90d', '1y'];
+        ranges.forEach(r => {
+            const btn = document.getElementById(`chart-range-${r}`);
+            if (!btn) return;
+            
+            // 如果是 15m 模式下并且匹配到 5d，激活 7d 按钮
+            const isMatch = (r === rangeStr) || (r === '7d' && rangeStr === '5d');
+            if (isMatch) {
+                btn.style.background = 'var(--primary)';
+                btn.style.color = '#ffffff';
+            } else {
+                btn.style.background = 'transparent';
+                btn.style.color = 'var(--text-secondary)';
+            }
+        });
+        
+        if (activeChartTab === 'trend') {
+            renderChartData(rangeStr);
+        } else {
+            renderMacroChart();
+        }
+    }
+
+    // 切换副图技术指标
+    function changeSubplotIndicator(ind) {
+        currentSubplotIndicator = ind;
+        
+        // 更新按钮激活样式
+        const indicators = ['macd', 'rsi', 'kdj', 'cci', 'wr', 'dmi', 'bias', 'obv', 'roc', 'cr', 'volume', 'none'];
+        indicators.forEach(i => {
+            const btn = document.getElementById(`subplot-${i}`);
+            if (btn) {
+                if (i === ind) {
+                    btn.classList.add('active');
+                    btn.style.background = 'var(--primary)';
+                    btn.style.color = '#ffffff';
+                } else {
+                    btn.classList.remove('active');
+                    btn.style.background = 'transparent';
+                    btn.style.color = 'var(--text-secondary)';
+                }
+            }
+        });
+        
+        // 重新渲染图表 option
+        if (cachedChartData && activeChartTab === 'trend') {
+            updateChartOption();
+        }
+    }
+
+    // 切换分析模式 Tab
+    function switchChartTab(tabName) {
+        activeChartTab = tabName;
+        const tabTrend = document.getElementById('tab-trend');
+        const tabMacro = document.getElementById('tab-macro');
+        const ctrlTrend = document.getElementById('controls-trend');
+        const ctrlMacro = document.getElementById('controls-macro');
+        
+        if (tabName === 'trend') {
+            tabTrend.classList.add('active');
+            tabTrend.style.background = 'rgba(10, 132, 255, 0.15)';
+            tabTrend.style.color = 'var(--primary)';
+            tabTrend.style.borderColor = 'rgba(10, 132, 255, 0.25)';
+            
+            tabMacro.classList.remove('active');
+            tabMacro.style.background = 'transparent';
+            tabMacro.style.color = 'var(--text-secondary)';
+            tabMacro.style.borderColor = 'var(--card-border)';
+            
+            ctrlTrend.style.display = 'flex';
+            ctrlMacro.style.display = 'none';
+            
+            document.getElementById('analysis-icon').innerText = '📈';
+            document.getElementById('analysis-title').innerText = '量化技术指标趋势解析';
+            
+            updateChartOption();
+        } else {
+            tabMacro.classList.add('active');
+            tabMacro.style.background = 'rgba(10, 132, 255, 0.15)';
+            tabMacro.style.color = 'var(--primary)';
+            tabMacro.style.borderColor = 'rgba(10, 132, 255, 0.25)';
+            
+            tabTrend.classList.remove('active');
+            tabTrend.style.background = 'transparent';
+            tabTrend.style.color = 'var(--text-secondary)';
+            tabTrend.style.borderColor = 'var(--card-border)';
+            
+            ctrlTrend.style.display = 'none';
+            ctrlMacro.style.display = 'flex';
+            
+            document.getElementById('analysis-icon').innerText = '🌍';
+            document.getElementById('analysis-title').innerText = '宏观因子与金价联动解析';
+            
+            renderMacroChart();
+        }
+    }
+
+    // 切换宏观因子
+    function changeMacroSymbol(symbol) {
+        currentMacroSymbol = symbol;
+        const btnDxy = document.getElementById('macro-symbol-dxy');
+        const btnTnx = document.getElementById('macro-symbol-tnx');
+        
+        if (symbol === 'dxy') {
+            btnDxy.style.background = 'var(--primary)';
+            btnDxy.style.color = '#ffffff';
+            btnTnx.style.background = 'transparent';
+            btnTnx.style.color = 'var(--text-secondary)';
+        } else {
+            btnTnx.style.background = 'var(--primary)';
+            btnTnx.style.color = '#ffffff';
+            btnDxy.style.background = 'transparent';
+            btnDxy.style.color = 'var(--text-secondary)';
+        }
+        
+        renderMacroChart();
+    }
+
+    // 抓取宏观对照数据
+    function renderMacroChart() {
+        if (!trendChart) return;
+        
+        trendChart.showLoading({
+            text: '加载对齐数据...',
+            color: '#0a84ff',
+            textColor: '#ffffff',
+            maskColor: 'rgba(18, 18, 28, 0.4)'
+        });
+        
+        fetch(`/api/macro_data?range=${currentChartRange}&symbol=${currentMacroSymbol}`)
+            .then(res => res.json())
+            .then(res => {
+                trendChart.hideLoading();
+                if (res.status === 'success') {
+                    cachedMacroData = res;
+                    drawMacroChartOption();
+                }
+            })
+            .catch(err => {
+                if (trendChart) trendChart.hideLoading();
+                console.error("Error drawing macro chart:", err);
+            });
+    }
+
+    // 渲染宏观对照图表配置
+    function drawMacroChartOption() {
+        if (!trendChart || !cachedMacroData) return;
+        
+        const res = cachedMacroData;
+        const symbol = currentMacroSymbol;
+        const correlation = res.correlation;
+        
+        // 1. 更新相关系数及文字解读（缺陷5修复：结合样本量与显著性，避免小样本误读）
+        document.getElementById('correlation-val').innerText = (correlation >= 0 ? '+' : '') + correlation.toFixed(2);
+        const descEl = document.getElementById('correlation-desc');
+        
+        let interpretation = "";
+        let absR = Math.abs(correlation);
+        if (absR >= 0.7) {
+            interpretation = correlation < 0 ? "强负相关，宏观压制明显" : "强正相关，同步避险行情";
+        } else if (absR >= 0.4) {
+            interpretation = correlation < 0 ? "中度负相关，反向联动" : "中度正相关，同步波动";
+        } else {
+            interpretation = "弱相关性，独立行情为主";
+        }
+        // 显著性修正：样本少且不显著时，即使 |r| 较大也只能提示"相关但不显著"
+        if (res.correlation_significant === false && res.correlation_n != null) {
+            interpretation += `（样本 ${res.correlation_n}，未达 5% 显著水平，谨慎参考）`;
+        } else if (res.correlation_n != null) {
+            interpretation += `（样本 ${res.correlation_n}，p=${res.correlation_p}，显著）`;
+        }
+        descEl.innerText = interpretation;
+        
+        const macroLabel = symbol === 'dxy' ? '美元指数 (DXY)' : '美债 10Y 收益率 (TNX)';
+        const macroFormatter = symbol === 'dxy' ? '{value}' : '{value}%';
+        
+        const option = {
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: 'rgba(26, 26, 38, 0.9)',
+                borderColor: 'rgba(255, 255, 255, 0.08)',
+                borderWidth: 1,
+                textStyle: { color: '#ffffff', fontFamily: 'Inter', fontSize: 11 },
+                axisPointer: {
+                    type: 'cross',
+                    lineStyle: { color: 'rgba(10, 132, 255, 0.3)', width: 1, type: 'dashed' }
+                },
+                formatter: function (params) {
+                    let date = params[0].name;
+                    let html = `<div style="padding: 4px 8px; min-width: 140px;">`;
+                    html += `<div style="font-size: 11px; color: #8e8e93; margin-bottom: 6px;">日期: ${date}</div>`;
+                    
+                    params.forEach(p => {
+                        if (p.seriesName === '黄金 Au(T+D)') {
+                            html += `<div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:12px;">
+                                <span style="color:#0a84ff;">黄金:</span>
+                                <strong>¥${p.value.toFixed(2)}/g</strong>
+                            </div>`;
+                        } else if (p.seriesName === macroLabel) {
+                            let valStr = symbol === 'dxy' ? p.value.toFixed(2) : p.value.toFixed(2) + '%';
+                            html += `<div style="display:flex; justify-content:space-between; font-size:12px;">
+                                <span style="color:#bf5af2;">${symbol === 'dxy' ? '美指' : '美债收益率'}:</span>
+                                <strong>${valStr}</strong>
+                            </div>`;
+                        }
+                    });
+                    html += `</div>`;
+                    return html;
+                }
+            },
+            grid: {
+                top: '12%',
+                left: '4%',
+                right: '4%',
+                bottom: '5%',
+                containLabel: true
+            },
+            xAxis: {
+                type: 'category',
+                data: res.labels,
+                boundaryGap: false,
+                axisLine: { show: false },
+                axisTick: { show: false },
+                axisLabel: { color: '#8e8e93', fontSize: 11, fontFamily: 'Outfit', margin: 12 }
+            },
+            yAxis: [
+                {
+                    type: 'value',
+                    name: '黄金价格',
+                    scale: true,
+                    axisLine: { show: false },
+                    axisTick: { show: false },
+                    splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.04)' } },
+                    axisLabel: { color: '#8e8e93', fontSize: 10, fontFamily: 'Outfit', formatter: '¥{value}' }
+                },
+                {
+                    type: 'value',
+                    name: symbol === 'dxy' ? '美指' : '利率',
+                    scale: true,
+                    position: 'right',
+                    axisLine: { show: false },
+                    axisTick: { show: false },
+                    splitLine: { show: false },
+                    axisLabel: { color: '#8e8e93', fontSize: 10, fontFamily: 'Outfit', formatter: macroFormatter }
+                }
+            ],
+            series: [
+                {
+                    name: '黄金 Au(T+D)',
+                    type: 'line',
+                    yAxisIndex: 0,
+                    data: res.gold_prices,
+                    smooth: true,
+                    showSymbol: false,
+                    lineStyle: { width: 2.2, color: '#0a84ff' },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(10, 132, 255, 0.12)' },
+                            { offset: 1, color: 'rgba(10, 132, 255, 0)' }
+                        ])
+                    }
+                },
+                {
+                    name: macroLabel,
+                    type: 'line',
+                    yAxisIndex: 1,
+                    data: res.macro_values,
+                    smooth: true,
+                    showSymbol: false,
+                    lineStyle: { width: 2.0, color: '#bf5af2' },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(191, 90, 242, 0.10)' },
+                            { offset: 1, color: 'rgba(191, 90, 242, 0)' }
+                        ])
+                    }
+                }
+            ]
+        };
+        
+        trendChart.setOption(option, true);
+        try {
+            updateDynamicMacroAnalysis();
+        } catch (e) {
+            console.error("Macro analysis error:", e);
+        }
+    }
+
+    // 切换指标显示状态
+    function toggleIndicators() {
+        updateChartOption();
+    }
+
+    // 切换预测状态
+    function toggleForecast() {
+        const checked = document.getElementById('toggle-forecast').checked;
+        const disclaimerEl = document.getElementById('forecast-disclaimer');
+        const confidenceBar = document.getElementById('forecast-confidence-bar');
+        if (checked) {
+            if (cachedForecastData) {
+                updateChartOption();
+            } else {
+                fetchForecastData();
+            }
+            if (confidenceBar) confidenceBar.style.display = 'block';
+        } else {
+            if (disclaimerEl) disclaimerEl.style.display = 'none';
+            if (confidenceBar) confidenceBar.style.display = 'none';
+            updateChartOption();
+        }
+    }
+
+    // 拉取预测数据
+    function fetchForecastData() {
+        if (!trendChart) return;
+        
+        trendChart.showLoading({
+            text: '运行预测模型...',
+            color: '#0a84ff',
+            textColor: '#ffffff',
+            maskColor: 'rgba(18, 18, 28, 0.4)'
+        });
+        
+        fetch('/api/forecast')
+            .then(res => res.json())
+            .then(res => {
+                trendChart.hideLoading();
+                if (res.status === 'success') {
+                    cachedForecastData = res;
+                    // 缺陷4修复：展示预测免责声明
+                    const disclaimerEl = document.getElementById('forecast-disclaimer');
+                    if (disclaimerEl && res.disclaimer) {
+                        disclaimerEl.textContent = res.disclaimer;
+                        disclaimerEl.style.display = 'block';
+                    }
+                    const confidenceBar = document.getElementById('forecast-confidence-bar');
+                    if (confidenceBar) confidenceBar.style.display = 'block';
+                    updateChartOption();
+                } else {
+                    document.getElementById('toggle-forecast').checked = false;
+                    alert("❌ 预测失败: " + res.message);
+                }
+            })
+            .catch(err => {
+                if (trendChart) trendChart.hideLoading();
+                document.getElementById('toggle-forecast').checked = false;
+                console.error("Error fetching forecast:", err);
+            });
+    }
+
+    // 更新价格与技术指标图表配置
+    function updateChartOption() {
+        if (!trendChart || !cachedChartData) return;
+
+        const res = cachedChartData;
+        const showMA5 = document.getElementById('toggle-ma5').checked;
+        const showMA20 = document.getElementById('toggle-ma20').checked;
+        const showMA60 = document.getElementById('toggle-ma60').checked;
+        const showMA120 = document.getElementById('toggle-ma120').checked;
+        const showBollinger = document.getElementById('toggle-bollinger').checked;
+        const showMACD = currentSubplotIndicator !== 'none'; // 支持关闭副图
+        const showForecast = document.getElementById('toggle-forecast').checked;
+
+        // 1. 数据对齐与拼接预测
+        let allLabels = res.labels;
+        let priceData = res.prices;
+        let ma5Data = res.ma5;
+        let ma20Data = res.ma20;
+        let ma60Data = res.ma60 || [];
+        let ma120Data = res.ma120 || [];
+        let bollUpperData = res.bollinger_upper;
+        let bollLowerData = res.bollinger_lower;
+        
+        let forecastSeries = [];
+        
+        if (showForecast && cachedForecastData) {
+            allLabels = res.labels.concat(cachedForecastData.labels);
+            const futureLen = cachedForecastData.labels.length;
+            
+            // 拼接历史空值
+            priceData = res.prices.concat(Array(futureLen).fill(null));
+            if (showMA5) ma5Data = res.ma5.concat(Array(futureLen).fill(null));
+            if (showMA20) ma20Data = res.ma20.concat(Array(futureLen).fill(null));
+            if (showMA60) ma60Data = (res.ma60 || []).concat(Array(futureLen).fill(null));
+            if (showMA120) ma120Data = (res.ma120 || []).concat(Array(futureLen).fill(null));
+            if (showBollinger) {
+                bollUpperData = res.bollinger_upper.concat(Array(futureLen).fill(null));
+                bollLowerData = res.bollinger_lower.concat(Array(futureLen).fill(null));
+            }
+            
+            // 拼接预测线
+            const lastHistPrice = res.prices[res.prices.length - 1];
+            const predData = Array(res.prices.length - 1).fill(null)
+                .concat([lastHistPrice])
+                .concat(cachedForecastData.predictions);
+                
+            forecastSeries.push({
+                name: '预测均值',
+                type: 'line',
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                data: predData,
+                smooth: true,
+                showSymbol: false,
+                lineStyle: { width: 1.8, color: '#0a84ff', type: 'dashed' }
+            });
+            
+            // 置信区间阴影带
+            const lowerBoundData = Array(res.prices.length - 1).fill(null)
+                .concat([lastHistPrice])
+                .concat(cachedForecastData.lower_bounds);
+                
+            const deltaData = Array(res.prices.length - 1).fill(null)
+                .concat([0])
+                .concat(cachedForecastData.upper_bounds.map((val, idx) => val - cachedForecastData.lower_bounds[idx]));
+                
+            forecastSeries.push(
+                {
+                    name: '预测下轨',
+                    type: 'line',
+                    xAxisIndex: 0,
+                    yAxisIndex: 0,
+                    data: lowerBoundData,
+                    stack: 'forecast-band',
+                    showSymbol: false,
+                    lineStyle: { width: 0.8, color: 'rgba(10, 132, 255, 0.2)', type: 'solid' }
+                },
+                {
+                    name: '预测区间',
+                    type: 'line',
+                    xAxisIndex: 0,
+                    yAxisIndex: 0,
+                    data: deltaData,
+                    stack: 'forecast-band',
+                    showSymbol: false,
+                    lineStyle: { opacity: 0 },
+                    areaStyle: { color: 'rgba(10, 132, 255, 0.08)' }
+                }
+            );
+        }
+
+        // 2. 配置 Grids 布局
+        let grids = [];
+        if (showMACD) {
+            grids = [
+                { top: '8%', height: '48%', left: '4%', right: '4%', containLabel: true },
+                { top: '66%', height: '26%', left: '4%', right: '4%', containLabel: true }
+            ];
+        } else {
+            grids = [
+                { top: '8%', height: '82%', left: '4%', right: '4%', containLabel: true }
+            ];
+        }
+
+        // 3. 配置 xAxes
+        let xAxes = [];
+        if (showMACD) {
+            xAxes = [
+                {
+                    type: 'category',
+                    gridIndex: 0,
+                    data: allLabels,
+                    boundaryGap: false,
+                    axisLine: { show: false },
+                    axisTick: { show: false },
+                    axisLabel: { show: false }
+                },
+                {
+                    type: 'category',
+                    gridIndex: 1,
+                    data: allLabels,
+                    boundaryGap: false,
+                    axisLine: { show: false },
+                    axisTick: { show: false },
+                    axisLabel: {
+                        color: '#8e8e93',
+                        fontSize: 10,
+                        fontFamily: 'Outfit',
+                        margin: 10
+                    }
+                }
+            ];
+        } else {
+            xAxes = [
+                {
+                    type: 'category',
+                    gridIndex: 0,
+                    data: allLabels,
+                    boundaryGap: false,
+                    axisLine: { show: false },
+                    axisTick: { show: false },
+                    axisLabel: {
+                        color: '#8e8e93',
+                        fontSize: 11,
+                        fontFamily: 'Outfit',
+                        margin: 12
+                    }
+                }
+            ];
+        }
+
+        // 4. 配置 yAxes
+        let yAxes = [];
+        if (showMACD) {
+            yAxes = [
+                {
+                    type: 'value',
+                    gridIndex: 0,
+                    scale: true,
+                    axisLine: { show: false },
+                    axisTick: { show: false },
+                    splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.04)' } },
+                    axisLabel: { color: '#8e8e93', fontSize: 10, fontFamily: 'Outfit', formatter: '{value} 元' }
+                },
+                {
+                    type: 'value',
+                    gridIndex: 1,
+                    scale: true,
+                    axisLine: { show: false },
+                    axisTick: { show: false },
+                    splitLine: { show: false },
+                    axisLabel: { color: '#8e8e93', fontSize: 9, fontFamily: 'Outfit', formatter: '{value} 元' }
+                }
+            ];
+        } else {
+            yAxes = [
+                {
+                    type: 'value',
+                    gridIndex: 0,
+                    scale: true,
+                    axisLine: { show: false },
+                    axisTick: { show: false },
+                    splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.04)' } },
+                    axisLabel: { color: '#8e8e93', fontSize: 11, fontFamily: 'Outfit', formatter: '{value} 元' }
+                }
+            ];
+        }
+
+        // 汇总历史数据与未来预测数据的交易信号
+        let displaySignals = [];
+        if (res && res.signals) {
+            displaySignals = [...res.signals];
+        }
+        if (showForecast && cachedForecastData && cachedForecastData.signals) {
+            displaySignals = displaySignals.concat(cachedForecastData.signals);
+        }
+
+        // 5. 构建 Series 列表
+        let priceSeries;
+        const signalMarkPoint = {
+            data: displaySignals.map(sig => ({
+                name: sig.scheme === 'trend' ? (sig.type === 'buy' ? '趋势金叉上涨' : '趋势死叉下跌') :
+                      sig.scheme === 'breakout' ? (sig.type === 'buy' ? '多头突破上轨' : '空头跌破下轨') :
+                      (sig.type === 'buy' ? '均值回归超跌' : '均值回归超买'),
+                coord: [sig.date, sig.price],
+                value: sig.type === 'buy' ? 'B' : 'S',
+                itemStyle: {
+                    color: sig.type === 'buy' ? 'rgba(255, 69, 58, 0.85)' : 'rgba(48, 209, 88, 0.85)',
+                    shadowBlur: 5,
+                    shadowColor: sig.type === 'buy' ? '#ff453b' : '#30d159'
+                },
+                label: {
+                    show: true,
+                    formatter: sig.label || (sig.type === 'buy' ? '买' : '卖'),
+                    color: '#ffffff',
+                    fontSize: 10,
+                    fontWeight: 'bold'
+                }
+            }))
+        };
+
+        if (chartType === 'candle' && res.opens && res.highs && res.lows) {
+            // K 线（蜡烛图）模式
+            let ohlcData = [];
+            for (let i = 0; i < res.opens.length; i++) {
+                if (priceData[i] === null) {
+                    ohlcData.push(null);
+                } else {
+                    ohlcData.push([res.opens[i], priceData[i], res.lows[i], res.highs[i]]);
+                }
+            }
+            // 预测数据拼接
+            if (showForecast && cachedForecastData) {
+                const futureLen = cachedForecastData.labels.length;
+                for (let i = 0; i < futureLen; i++) {
+                    ohlcData.push(null);
+                }
+            }
+            priceSeries = {
+                name: 'Au(T+D)',
+                type: 'candlestick',
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                data: ohlcData,
+                itemStyle: {
+                    color: '#ff453a',
+                    color0: '#30d158',
+                    borderColor: '#ff453a',
+                    borderColor0: '#30d158'
+                },
+                markPoint: signalMarkPoint
+            };
+        } else {
+            // 折线模式
+            priceSeries = {
+                name: 'Au(T+D)',
+                type: 'line',
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                data: priceData,
+                smooth: true,
+                showSymbol: false,
+                symbol: 'circle',
+                symbolSize: 6,
+                itemStyle: { color: '#0a84ff' },
+                lineStyle: { width: 2.2, color: '#0a84ff' },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(10, 132, 255, 0.15)' },
+                        { offset: 1, color: 'rgba(10, 132, 255, 0)' }
+                    ])
+                },
+                markPoint: signalMarkPoint
+            };
+        }
+        let series = [priceSeries];
+
+        // MA 均线
+        if (showMA5) {
+            series.push({
+                name: 'MA5',
+                type: 'line',
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                data: ma5Data,
+                smooth: true,
+                showSymbol: false,
+                lineStyle: { width: 1.2, color: '#ffd60a', opacity: 0.8 }
+            });
+        }
+        if (showMA20) {
+            series.push({
+                name: 'MA20',
+                type: 'line',
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                data: ma20Data,
+                smooth: true,
+                showSymbol: false,
+                lineStyle: { width: 1.2, color: '#30d158', opacity: 0.8 }
+            });
+        }
+        if (showMA60) {
+            series.push({
+                name: 'MA60',
+                type: 'line',
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                data: ma60Data,
+                smooth: true,
+                showSymbol: false,
+                lineStyle: { width: 1.2, color: '#bf5af2', opacity: 0.8 }
+            });
+        }
+        if (showMA120) {
+            series.push({
+                name: 'MA120',
+                type: 'line',
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                data: ma120Data,
+                smooth: true,
+                showSymbol: false,
+                lineStyle: { width: 1.2, color: '#64d2ff', opacity: 0.8 }
+            });
+        }
+
+        // 布林带
+        if (showBollinger) {
+            series.push(
+                {
+                    name: 'B-Upper',
+                    type: 'line',
+                    xAxisIndex: 0,
+                    yAxisIndex: 0,
+                    data: bollUpperData,
+                    smooth: true,
+                    showSymbol: false,
+                    lineStyle: { width: 1.0, color: '#bf5af2', type: 'dashed', opacity: 0.6 }
+                },
+                {
+                    name: 'B-Lower',
+                    type: 'line',
+                    xAxisIndex: 0,
+                    yAxisIndex: 0,
+                    data: bollLowerData,
+                    smooth: true,
+                    showSymbol: false,
+                    lineStyle: { width: 1.0, color: '#bf5af2', type: 'dashed', opacity: 0.6 }
+                }
+            );
+        }
+
+        // 合并预测系列
+        if (showForecast && cachedForecastData) {
+            series = series.concat(forecastSeries);
+        }
+
+        // 副图指标系列构建 (MACD, RSI, KDJ, CCI, 成交量)
+        if (showMACD) {
+            const futureLen = (showForecast && cachedForecastData) ? cachedForecastData.labels.length : 0;
+            
+            if (currentSubplotIndicator === 'macd') {
+                let difData = res.macd_dif;
+                let deaData = res.macd_dea;
+                let histData = res.macd_hist;
+                if (futureLen > 0) {
+                    difData = res.macd_dif.concat(Array(futureLen).fill(null));
+                    deaData = res.macd_dea.concat(Array(futureLen).fill(null));
+                    histData = res.macd_hist.concat(Array(futureLen).fill(null));
+                }
+                series.push(
+                    {
+                        name: 'DIF',
+                        type: 'line',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+                        data: difData,
+                        showSymbol: false,
+                        lineStyle: { width: 1.0, color: '#ff9f0a', opacity: 0.8 }
+                    },
+                    {
+                        name: 'DEA',
+                        type: 'line',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+                        data: deaData,
+                        showSymbol: false,
+                        lineStyle: { width: 1.0, color: '#64d2ff', opacity: 0.8 }
+                    },
+                    {
+                        name: 'MACD',
+                        type: 'bar',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+                        data: histData,
+                        itemStyle: {
+                            color: function(params) {
+                                return params.data >= 0 ? 'rgba(255, 69, 58, 0.75)' : 'rgba(48, 209, 88, 0.75)';
+                            }
+                        }
+                    }
+                );
+                yAxes[1].axisLabel.formatter = '{value} 元';
+                yAxes[1].min = null;
+                yAxes[1].max = null;
+            } else if (currentSubplotIndicator === 'rsi') {
+                let rsiData = res.rsi;
+                if (futureLen > 0) {
+                    rsiData = res.rsi.concat(Array(futureLen).fill(null));
+                }
+                series.push({
+                    name: 'RSI(14)',
+                    type: 'line',
+                    xAxisIndex: 1,
+                    yAxisIndex: 1,
+                    data: rsiData,
+                    showSymbol: false,
+                    lineStyle: { width: 1.2, color: '#ff375f', opacity: 0.9 },
+                    markLine: {
+                        symbol: 'none',
+                        data: [
+                            { yAxis: 70, label: { formatter: '超买 (70)', position: 'end', color: 'rgba(255, 69, 58, 0.5)' }, lineStyle: { type: 'dashed', color: 'rgba(255, 69, 58, 0.25)' } },
+                            { yAxis: 30, label: { formatter: '超卖 (30)', position: 'end', color: 'rgba(48, 209, 88, 0.5)' }, lineStyle: { type: 'dashed', color: 'rgba(48, 209, 88, 0.25)' } }
+                        ]
+                    },
+                    markArea: {
+                        silent: true,
+                        data: [
+                            [{ yAxis: 70, itemStyle: { color: 'rgba(255, 69, 58, 0.06)' } }, { yAxis: 100 }],
+                            [{ yAxis: 0, itemStyle: { color: 'rgba(48, 209, 88, 0.06)' } }, { yAxis: 30 }]
+                        ]
+                    }
+                });
+                yAxes[1].axisLabel.formatter = '{value}';
+                yAxes[1].min = 0;
+                yAxes[1].max = 100;
+            } else if (currentSubplotIndicator === 'kdj') {
+                let kData = res.kdj_k;
+                let dData = res.kdj_d;
+                let jData = res.kdj_j;
+                if (futureLen > 0) {
+                    kData = res.kdj_k.concat(Array(futureLen).fill(null));
+                    dData = res.kdj_d.concat(Array(futureLen).fill(null));
+                    jData = res.kdj_j.concat(Array(futureLen).fill(null));
+                }
+                series.push(
+                    {
+                        name: 'K',
+                        type: 'line',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+                        data: kData,
+                        showSymbol: false,
+                        lineStyle: { width: 1.0, color: '#ffd60a', opacity: 0.8 }
+                    },
+                    {
+                        name: 'D',
+                        type: 'line',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+                        data: dData,
+                        showSymbol: false,
+                        lineStyle: { width: 1.0, color: '#30d158', opacity: 0.8 }
+                    },
+                    {
+                        name: 'J',
+                        type: 'line',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+                        data: jData,
+                        showSymbol: false,
+                        lineStyle: { width: 1.0, color: '#bf5af2', opacity: 0.8 },
+                        markArea: {
+                            silent: true,
+                            data: [
+                                [{ yAxis: 80, itemStyle: { color: 'rgba(255, 69, 58, 0.06)' } }, { yAxis: 120 }],
+                                [{ yAxis: -20, itemStyle: { color: 'rgba(48, 209, 88, 0.06)' } }, { yAxis: 20 }]
+                            ]
+                        }
+                    }
+                );
+                yAxes[1].axisLabel.formatter = '{value}';
+                yAxes[1].min = null;
+                yAxes[1].max = null;
+            } else if (currentSubplotIndicator === 'cci') {
+                let cciData = res.cci;
+                if (futureLen > 0) {
+                    cciData = res.cci.concat(Array(futureLen).fill(null));
+                }
+                series.push({
+                    name: 'CCI(14)',
+                    type: 'line',
+                    xAxisIndex: 1,
+                    yAxisIndex: 1,
+                    data: cciData,
+                    showSymbol: false,
+                    lineStyle: { width: 1.2, color: '#64d2ff', opacity: 0.9 },
+                    markLine: {
+                        symbol: 'none',
+                        data: [
+                            { yAxis: 100, label: { formatter: '+100', position: 'end', color: 'rgba(255, 255, 255, 0.25)' }, lineStyle: { type: 'dashed', color: 'rgba(255, 255, 255, 0.1)' } },
+                            { yAxis: -100, label: { formatter: '-100', position: 'end', color: 'rgba(255, 255, 255, 0.25)' }, lineStyle: { type: 'dashed', color: 'rgba(255, 255, 255, 0.1)' } }
+                        ]
+                    }
+                });
+                yAxes[1].axisLabel.formatter = '{value}';
+                yAxes[1].min = null;
+                yAxes[1].max = null;
+            } else if (currentSubplotIndicator === 'wr') {
+                let wrData = res.wr;
+                if (futureLen > 0) wrData = res.wr.concat(Array(futureLen).fill(null));
+                series.push({
+                    name: 'W&R(14)',
+                    type: 'line', xAxisIndex: 1, yAxisIndex: 1,
+                    data: wrData, showSymbol: false,
+                    lineStyle: { width: 1.2, color: '#ff9f0a', opacity: 0.9 },
+                    markLine: { symbol: 'none',
+                        data: [
+                            { yAxis: 20, label: { formatter: '超买20', position: 'end', color: 'rgba(255,255,255,0.25)' }, lineStyle: { type: 'dashed', color: 'rgba(255,69,58,0.3)' } },
+                            { yAxis: 80, label: { formatter: '超卖80', position: 'end', color: 'rgba(255,255,255,0.25)' }, lineStyle: { type: 'dashed', color: 'rgba(48,209,88,0.3)' } }
+                        ]
+                    },
+                    markArea: {
+                        silent: true,
+                        data: [
+                            [{ yAxis: 0, itemStyle: { color: 'rgba(255, 69, 58, 0.06)' } }, { yAxis: 20 }],
+                            [{ yAxis: 80, itemStyle: { color: 'rgba(48, 209, 88, 0.06)' } }, { yAxis: 100 }]
+                        ]
+                    }
+                });
+                yAxes[1].min = 0; yAxes[1].max = 100;
+                yAxes[1].axisLabel.formatter = '{value}';
+            } else if (currentSubplotIndicator === 'dmi') {
+                let pdi = res.dmi_plus_di; let mdi = res.dmi_minus_di; let adx = res.dmi_adx;
+                if (futureLen > 0) { pdi = pdi.concat(Array(futureLen).fill(null)); mdi = mdi.concat(Array(futureLen).fill(null)); adx = adx.concat(Array(futureLen).fill(null)); }
+                series.push({ name: '+DI', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: pdi, showSymbol: false, lineStyle: { width: 1.2, color: '#30d158' } });
+                series.push({ name: '-DI', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: mdi, showSymbol: false, lineStyle: { width: 1.2, color: '#ff453a' } });
+                series.push({ name: 'ADX', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: adx, showSymbol: false, lineStyle: { width: 1.2, color: '#64d2ff', opacity: 0.7 } });
+                yAxes[1].min = 0; yAxes[1].max = 100;
+                yAxes[1].axisLabel.formatter = '{value}';
+            } else if (currentSubplotIndicator === 'bias') {
+                let b6 = res.bias6; let b12 = res.bias12; let b24 = res.bias24;
+                if (futureLen > 0) { b6 = b6.concat(Array(futureLen).fill(null)); b12 = b12.concat(Array(futureLen).fill(null)); b24 = b24.concat(Array(futureLen).fill(null)); }
+                series.push({ name: 'BIAS(6)', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: b6, showSymbol: false, lineStyle: { width: 1.2, color: '#ff9f0a' } });
+                series.push({ name: 'BIAS(12)', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: b12, showSymbol: false, lineStyle: { width: 1.2, color: '#30d158' } });
+                series.push({ name: 'BIAS(24)', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: b24, showSymbol: false, lineStyle: { width: 1.2, color: '#64d2ff' } });
+                yAxes[1].axisLabel.formatter = '{value}%';
+            } else if (currentSubplotIndicator === 'obv') {
+                let obvData = res.obv;
+                if (futureLen > 0) obvData = obvData.concat(Array(futureLen).fill(null));
+                series.push({ name: 'OBV', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: obvData, showSymbol: false, lineStyle: { width: 1.5, color: '#bf5af2', opacity: 0.85 }, areaStyle: { color: 'rgba(191,90,242,0.08)' } });
+                yAxes[1].axisLabel.formatter = function(v){ return v >= 1000000 ? (v/1000000).toFixed(1)+'M' : v >= 1000 ? (v/1000).toFixed(0)+'K' : v; };
+            } else if (currentSubplotIndicator === 'roc') {
+                let rocData = res.roc;
+                if (futureLen > 0) rocData = rocData.concat(Array(futureLen).fill(null));
+                series.push({ name: 'ROC(12)', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: rocData, showSymbol: false, lineStyle: { width: 1.2, color: '#30d158', opacity: 0.9 },
+                    markLine: { symbol: 'none', data: [{ yAxis: 0, lineStyle: { type: 'dashed', color: 'rgba(255,255,255,0.25)' } }] }
+                });
+                yAxes[1].axisLabel.formatter = '{value}%';
+            } else if (currentSubplotIndicator === 'cr') {
+                let crData = res.cr;
+                if (futureLen > 0) crData = crData.concat(Array(futureLen).fill(null));
+                series.push({ name: 'CR(26)', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: crData, showSymbol: false, lineStyle: { width: 1.2, color: '#ff9f0a', opacity: 0.9 },
+                    markLine: { symbol: 'none',
+                        data: [
+                            { yAxis: 200, label: { formatter: '过热200', position: 'end', color: 'rgba(255,255,255,0.25)' }, lineStyle: { type: 'dashed', color: 'rgba(255,69,58,0.3)' } },
+                            { yAxis: 60, label: { formatter: '低估60', position: 'end', color: 'rgba(255,255,255,0.25)' }, lineStyle: { type: 'dashed', color: 'rgba(48,209,88,0.3)' } }
+                        ]
+                    }
+                });
+                yAxes[1].axisLabel.formatter = '{value}';
+            } else if (currentSubplotIndicator === 'volume') {
+                let volData = res.volumes || [];
+                if (futureLen > 0) {
+                    volData = (res.volumes || []).concat(Array(futureLen).fill(null));
+                }
+                series.push({
+                    name: '成交量',
+                    type: 'bar',
+                    xAxisIndex: 1,
+                    yAxisIndex: 1,
+                    data: volData,
+                    itemStyle: {
+                        color: function(params) {
+                            const dataIndex = params.dataIndex;
+                            if (dataIndex === 0) return 'rgba(255, 69, 58, 0.6)';
+                            const currPrice = priceData[dataIndex];
+                            const prevPrice = priceData[dataIndex - 1];
+                            if (currPrice === null || prevPrice === null) return 'rgba(142, 142, 147, 0.6)';
+                            return currPrice >= prevPrice ? 'rgba(255, 69, 58, 0.6)' : 'rgba(48, 209, 88, 0.6)';
+                        }
+                    }
+                });
+                yAxes[1].axisLabel.formatter = '{value}';
+                yAxes[1].min = null;
+                yAxes[1].max = null;
+            }
+        }
+
+        let zoomXAxisIndex = [0];
+        if (showMACD) {
+            zoomXAxisIndex = [0, 1];
+        }
+        
+        let zoomStart = 0;
+        const totalPoints = allLabels.length;
+        if (totalPoints > 45) {
+            zoomStart = Math.max(0, Math.round((1 - 45 / totalPoints) * 100));
+        }
+
+        const option = {
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: 'rgba(26, 26, 38, 0.9)',
+                borderColor: 'rgba(255, 255, 255, 0.08)',
+                borderWidth: 1,
+                textStyle: { color: '#ffffff', fontFamily: 'Inter', fontSize: 11 },
+                axisPointer: {
+                    type: 'cross',
+                    link: { xAxisIndex: 'all' },
+                    lineStyle: { color: 'rgba(10, 132, 255, 0.3)', width: 1, type: 'dashed' }
+                },
+                formatter: function (params) {
+                    let date = params[0].name;
+                    let html = `<div style="padding: 4px 8px; min-width: 140px;">`;
+                    html += `<div style="font-size: 11px; color: #8e8e93; margin-bottom: 6px;">日期: ${date}</div>`;
+                    
+                    let isForecastPoint = false;
+                    if (showForecast && cachedForecastData && cachedForecastData.labels.includes(date)) {
+                        isForecastPoint = true;
+                    }
+                    
+                    params.forEach(p => {
+                        const val = p.value;
+                        const hasVal = val !== null && val !== undefined && !isNaN(val);
+                        const valStr = hasVal ? val.toFixed(2) : '--';
+                        const macdValStr = hasVal ? val.toFixed(4) : '--';
+
+                        if (p.seriesName === 'Au(T+D)') {
+                            html += `<div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:12px;">
+                                <span>最新价:</span>
+                                <strong style="color: #0a84ff;">¥${valStr}</strong>
+                            </div>`;
+                        } else if (p.seriesName === '预测均值' && isForecastPoint) {
+                            html += `<div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:12px;">
+                                <span style="color:#0a84ff; font-weight:600;">🔮 预测均值:</span>
+                                <strong style="color: #0a84ff;">¥${valStr}</strong>
+                            </div>`;
+                            
+                            let idx = cachedForecastData.labels.indexOf(date);
+                            if (idx !== -1) {
+                                let low = cachedForecastData.lower_bounds[idx];
+                                let high = cachedForecastData.upper_bounds[idx];
+                                let lowStr = (low !== null && low !== undefined) ? low.toFixed(2) : '--';
+                                let highStr = (high !== null && high !== undefined) ? high.toFixed(2) : '--';
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px; color:#8e8e93;">
+                                    <span>区间下轨(80%):</span>
+                                    <strong>¥${lowStr}</strong>
+                                </div>`;
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px; color:#8e8e93;">
+                                    <span>区间上轨(80%):</span>
+                                    <strong>¥${highStr}</strong>
+                                </div>`;
+                            }
+                        } else if (!isForecastPoint) {
+                            if (p.seriesName === 'MA5' && showMA5) {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px;">
+                                    <span style="color:#ffd60a;">MA5:</span>
+                                    <strong>¥${valStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'MA20' && showMA20) {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px;">
+                                    <span style="color:#30d158;">MA20:</span>
+                                    <strong>¥${valStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'MA60' && showMA60) {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px;">
+                                    <span style="color:#bf5af2;">MA60:</span>
+                                    <strong>¥${valStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'MA120' && showMA120) {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px;">
+                                    <span style="color:#64d2ff;">MA120:</span>
+                                    <strong>¥${valStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'B-Upper' && showBollinger) {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px;">
+                                    <span style="color:#bf5af2;">布林上轨:</span>
+                                    <strong>¥${valStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'B-Lower' && showBollinger) {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px;">
+                                    <span style="color:#bf5af2;">布林下轨:</span>
+                                    <strong>¥${valStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'DIF' && currentSubplotIndicator === 'macd') {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px; color:#ff9f0a;">
+                                    <span>DIF:</span>
+                                    <strong>${macdValStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'DEA' && currentSubplotIndicator === 'macd') {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px; color:#64d2ff;">
+                                    <span>DEA:</span>
+                                    <strong>${macdValStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'MACD' && currentSubplotIndicator === 'macd') {
+                                let color = val >= 0 ? '#ff453a' : '#30d158';
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px;">
+                                    <span style="color:#8e8e93;">MACD:</span>
+                                    <strong style="color: ${color};">${macdValStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'RSI(14)' && currentSubplotIndicator === 'rsi') {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px; color:#ff375f;">
+                                    <span>RSI(14):</span>
+                                    <strong>${valStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'K' && currentSubplotIndicator === 'kdj') {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px; color:#ffd60a;">
+                                    <span>K:</span>
+                                    <strong>${valStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'D' && currentSubplotIndicator === 'kdj') {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px; color:#30d158;">
+                                    <span>D:</span>
+                                    <strong>${valStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'J' && currentSubplotIndicator === 'kdj') {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px; color:#bf5af2;">
+                                    <span>J:</span>
+                                    <strong>${valStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === 'CCI(14)' && currentSubplotIndicator === 'cci') {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px; color:#64d2ff;">
+                                    <span>CCI(14):</span>
+                                    <strong>${valStr}</strong>
+                                </div>`;
+                            } else if (p.seriesName === '成交量' && currentSubplotIndicator === 'volume') {
+                                html += `<div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:10px; color:#8e8e93;">
+                                    <span>成交量:</span>
+                                    <strong>${val.toLocaleString()} 手</strong>
+                                </div>`;
+                            }
+                        }
+                    });
+                    html += `</div>`;
+                    return html;
+                }
+            },
+            axisPointer: {
+                link: { xAxisIndex: 'all' }
+            },
+            grid: grids,
+            xAxis: xAxes,
+            yAxis: yAxes,
+            dataZoom: [
+                {
+                    type: 'inside',
+                    xAxisIndex: zoomXAxisIndex,
+                    start: zoomStart,
+                    end: 100
+                },
+                {
+                    type: 'slider',
+                    show: true,
+                    xAxisIndex: zoomXAxisIndex,
+                    bottom: '1%',
+                    height: 16,
+                    borderColor: 'transparent',
+                    fillerColor: 'rgba(10, 132, 255, 0.12)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.01)',
+                    handleStyle: {
+                        color: '#0a84ff',
+                        borderColor: '#0a84ff'
+                    },
+                    textStyle: { color: '#8e8e93', fontSize: 9 },
+                    start: zoomStart,
+                    end: 100
+                }
+            ],
+            series: series
+        };
+
+        trendChart.setOption(option, true);
+        try {
+            updateDynamicTrendAnalysis();
+        } catch (e) {
+            console.error("Trend analysis error:", e);
+        }
+    }
+
+    // 请求 API 渲染折线图
+    function renderChartData(rangeStr) {
+        if (!trendChart) return;
+        
+        trendChart.showLoading({
+            text: '载入中...',
+            color: '#0a84ff',
+            textColor: '#ffffff',
+            maskColor: 'rgba(18, 18, 28, 0.4)'
+        });
+        
+        fetch(`/api/chart_data?range=${rangeStr}&interval=${currentTimeframe}`)
+            .then(res => res.json())
+            .then(res => {
+                trendChart.hideLoading();
+                if (res.status === 'success') {
+                    cachedChartData = res;
+                    updateChartOption();
+                }
+            })
+            .catch(err => {
+                if (trendChart) trendChart.hideLoading();
+                console.error("Error drawing trend chart:", err);
+            });
+    }
+
+    // 行情与账户汇总数据轮询刷新
+    function updateDashboardSummary() {
+        try {
+            updateConsensusDecision();
+        } catch (consErr) {
+            console.error("Failed to update consensus decision:", consErr);
+        }
+
+        // 1. 金价刷新
+        fetch('/api/price')
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    const price = res.data;
+                    currentPriceData = price; // 保存最新的实时金价对象
+                    
+                    document.getElementById('metric-latest-price').innerText = price.latest.toFixed(2);
+                    
+                    // 动态将实时 Ask（卖一/做多价）和 Bid（买一/做空价）渲染到快捷下单按钮上
+                    document.getElementById('label-buy-10').innerText = `买入做多 10克 @ ¥${price.ask.toFixed(2)}`;
+                    document.getElementById('label-buy-50').innerText = `买入做多 50克 @ ¥${price.ask.toFixed(2)}`;
+                    document.getElementById('label-sell-10').innerText = `卖出做空 10克 @ ¥${price.bid.toFixed(2)}`;
+                    document.getElementById('label-sell-50').innerText = `卖出做空 50克 @ ¥${price.bid.toFixed(2)}`;
+                    
+                    const dot = document.getElementById('metric-price-dot');
+                    const src = document.getElementById('metric-price-source');
+                    
+                    if (price.source === 'offline_cached') {
+                        dot.className = 'live-price-indicator simulated';
+                        src.innerText = `离线缓存 (更新于: ${price.timestamp})`;
+                    } else if (price.is_simulated) {
+                        dot.className = 'live-price-indicator simulated';
+                        src.innerText = '模拟行情 (API受限)';
+                    } else if (price.source === 'yahoo_global') {
+                        dot.className = 'live-price-indicator';
+                        src.innerText = '国际行情折算 (已加溢价)';
+                    } else {
+                        dot.className = 'live-price-indicator';
+                        src.innerText = 'SGE 实盘行情';
+                    }
+
+                    // 强平全局广播
+                    if (res.liquidated && res.liquidated.length > 0) {
+                        alert("⚠️ 爆仓通知：由于账户风险率低于 80% 强制清算线，您的仓位已被系统强平！");
+                        updateDashboardSummary();
+                    }
+                }
+            })
+            .catch(err => console.error("Error loading price metrics:", err));
+
+        // 2. 账户及持仓信息更新
+        fetch('/api/account')
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    const account = res.account;
+                    const formatter = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' });
+                    
+                    document.getElementById('metric-equity').innerText = formatter.format(account.equity);
+                    document.getElementById('metric-available-cash').innerText = formatter.format(account.available_cash);
+                    document.getElementById('metric-margin').innerText = formatter.format(account.total_margin);
+                    document.getElementById('quick-cash-amount').innerText = formatter.format(account.available_cash);
+                    
+                    // 浮动盈亏动态调色
+                    const pnlMetric = document.getElementById('metric-pnl');
+                    const pnlIcon = document.getElementById('pnl-icon');
+                    const pnlLabel = document.getElementById('metric-pnl-label');
+                    
+                    pnlMetric.innerText = formatter.format(account.total_floating_pnl);
+                    
+                    if (account.total_floating_pnl > 0) {
+                        pnlMetric.style.color = 'var(--danger)'; // 红色上涨利润
+                        pnlIcon.style.color = 'var(--danger)';
+                        pnlIcon.style.transform = 'none';
+                        pnlLabel.innerText = '持仓处于盈利状态';
+                    } else if (account.total_floating_pnl < 0) {
+                        pnlMetric.style.color = 'var(--success)'; // 绿色亏损
+                        pnlIcon.style.color = 'var(--success)';
+                        pnlIcon.style.transform = 'rotate(180deg)'; // 亏损图标向下翻转
+                        pnlLabel.innerText = '持仓处于亏损状态';
+                    } else {
+                        pnlMetric.style.color = 'var(--text-primary)';
+                        pnlIcon.style.color = 'var(--text-secondary)';
+                        pnlLabel.innerText = '当前无活动持仓';
+                    }
+
+                    // 风险率状态显示
+                    const riskVal = document.getElementById('pos-risk-ratio');
+                    if (account.risk_ratio === 999999.0) {
+                        riskVal.innerText = '安全 (无仓位)';
+                        riskVal.style.color = 'var(--text-secondary)';
+                    } else {
+                        riskVal.innerText = `${account.risk_ratio.toFixed(2)}%`;
+                        riskVal.style.color = account.risk_ratio < 120.0 ? 'var(--danger)' : 'var(--success)';
+                    }
+
+                    // 底下持仓面板更新
+                    const positions = res.positions;
+                    positions.forEach(pos => {
+                        if (pos.direction === 'long') {
+                            document.getElementById('home-long-grams').innerText = `${pos.grams.toFixed(2)} 克`;
+                            document.getElementById('home-long-cost').innerText = formatter.format(pos.avg_cost);
+                            document.getElementById('home-long-margin').innerText = formatter.format(pos.margin);
+                            
+                            const pnlEl = document.getElementById('home-long-pnl');
+                            if (pos.grams > 0 && currentPriceData) {
+                                const bid = currentPriceData.bid;
+                                const pnlVal = (bid - pos.avg_cost) * pos.grams;
+                                pnlEl.innerText = formatter.format(pnlVal);
+                                pnlEl.style.color = pnlVal >= 0 ? 'var(--danger)' : 'var(--success)';
+                            } else {
+                                pnlEl.innerText = '¥0.00';
+                                pnlEl.style.color = 'var(--text-primary)';
+                            }
+                            
+                            document.getElementById('home-long-card').style.opacity = pos.grams > 0 ? 1 : 0.45;
+                        } else {
+                            document.getElementById('home-short-grams').innerText = `${pos.grams.toFixed(2)} 克`;
+                            document.getElementById('home-short-cost').innerText = formatter.format(pos.avg_cost);
+                            document.getElementById('home-short-margin').innerText = formatter.format(pos.margin);
+                            
+                            const pnlEl = document.getElementById('home-short-pnl');
+                            if (pos.grams > 0 && currentPriceData) {
+                                const ask = currentPriceData.ask;
+                                const pnlVal = (pos.avg_cost - ask) * pos.grams;
+                                pnlEl.innerText = formatter.format(pnlVal);
+                                pnlEl.style.color = pnlVal >= 0 ? 'var(--danger)' : 'var(--success)';
+                            } else {
+                                pnlEl.innerText = '¥0.00';
+                                pnlEl.style.color = 'var(--text-primary)';
+                            }
+                            
+                            document.getElementById('home-short-card').style.opacity = pos.grams > 0 ? 1 : 0.45;
+                        }
+                    });
+                }
+            })
+            .catch(err => console.error("Error loading account data in metrics:", err));
+    }
+
+    // 快捷一键交易逻辑
+    function quickTrade(action, grams) {
+        if (!confirm(`确认执行快捷下单？\n操作: 一键${action === 'buy_open' ? '做多' : '做空'} ${grams}克`)) {
+            return;
+        }
+        
+        fetch('/api/trade', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                action: action,
+                grams: grams
+            })
+        })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === 'success') {
+                alert(`🎉 交易委托成交！\n类型: ${action}\n成交均价: ${res.trade.price.toFixed(2)} 元/克\n克数: ${res.trade.grams} 克\n经手手续费: ${res.trade.fee.toFixed(2)} 元`);
+                updateDashboardSummary();
+            } else {
+                alert(`❌ 快捷交易失败：${res.message}`);
+            }
+        })
+        .catch(err => {
+            console.error("AJAX Error in quick trade:", err);
+            alert("❌ 网络拥堵，一键交易失败");
+        });
+    }
+
+    let consensusChart = null;
+    let currentTimeframe = '1d';
+
+    function changeTimeframe(tf) {
+        currentTimeframe = tf;
+        
+        // 更新周期选择按钮激活状态
+        const timeframes = ['15m', '1h', '4h', '1d'];
+        timeframes.forEach(t => {
+            const btn = document.getElementById(`timeframe-${t}`);
+            if (btn) {
+                if (t === tf) {
+                    btn.classList.add('active');
+                    btn.style.background = 'var(--primary)';
+                    btn.style.color = '#ffffff';
+                } else {
+                    btn.classList.remove('active');
+                    btn.style.background = 'transparent';
+                    btn.style.color = 'var(--text-secondary)';
+                }
+            }
+        });
+        
+        // 动态调整时间跨度按钮的可见性与默认值
+        const range7d = document.getElementById('chart-range-7d');
+        const range30d = document.getElementById('chart-range-30d');
+        const range90d = document.getElementById('chart-range-90d');
+        const range1y = document.getElementById('chart-range-1y');
+        
+        if (tf === '15m') {
+            if (range7d) { range7d.style.display = 'block'; range7d.innerText = '5天'; }
+            if (range30d) range30d.style.display = 'none';
+            if (range90d) range90d.style.display = 'none';
+            if (range1y) range1y.style.display = 'none';
+            currentChartRange = '5d';
+        } else if (tf === '1h' || tf === '4h') {
+            if (range7d) { range7d.style.display = 'block'; range7d.innerText = '7天'; }
+            if (range30d) range30d.style.display = 'block';
+            if (range90d) range90d.style.display = 'none';
+            if (range1y) range1y.style.display = 'none';
+            currentChartRange = '7d';
+        } else {
+            if (range7d) { range7d.style.display = 'block'; range7d.innerText = '7天'; }
+            if (range30d) range30d.style.display = 'block';
+            if (range90d) range90d.style.display = 'block';
+            if (range1y) range1y.style.display = 'block';
+            currentChartRange = '30d';
+        }
+        
+        // 重置所有范围按钮的激活状态
+        const ranges = ['7d', '30d', '90d', '1y'];
+        ranges.forEach(r => {
+            const btn = document.getElementById(`chart-range-${r}`);
+            if (btn) {
+                const isMatch = (r === currentChartRange) || (r === '7d' && currentChartRange === '5d');
+                if (isMatch) {
+                    btn.style.background = 'var(--primary)';
+                    btn.style.color = '#ffffff';
+                } else {
+                    btn.style.background = 'transparent';
+                    btn.style.color = 'var(--text-secondary)';
+                }
+            }
+        });
+        
+        // 触发数据联动刷新
+        renderChartData(currentChartRange);
+        updateConsensusDecision();
+    }
+
+    function initConsensusChart() {
+        const chartDom = document.getElementById('consensus-gauge');
+        if (!chartDom) return;
+        consensusChart = echarts.init(chartDom);
+        window.addEventListener('resize', () => {
+            if (consensusChart) consensusChart.resize();
+        });
+    }
+
+    function drawConsensusGauge(score, rating) {
+        if (!consensusChart) return;
+        
+        const percent = Math.round(score * 100);
+        
+        let color = '#8e8e93';
+        if (score >= 0.2) color = '#ff453a'; // 红色多头 (中国红)
+        if (score <= -0.2) color = '#30d159'; // 绿色空头 (健康绿)
+        
+        const option = {
+            series: [
+                {
+                    type: 'gauge',
+                    startAngle: 180,
+                    endAngle: 0,
+                    center: ['50%', '85%'],
+                    radius: '135%',
+                    min: -100,
+                    max: 100,
+                    splitNumber: 4,
+                    axisLine: {
+                        lineStyle: {
+                            width: 6,
+                            color: [
+                                [0.2, '#30d159'],   // 极度空头
+                                [0.4, 'rgba(48,209,88,0.5)'],   // 偏空
+                                [0.6, '#8e8e93'],   // 中性
+                                [0.8, 'rgba(255,69,58,0.5)'],   // 偏多
+                                [1, '#ff453b']      // 极度多头
+                            ]
+                        }
+                    },
+                    pointer: {
+                        icon: 'path://M12.8,0.7l12,20c1.2,2,0.1,4.7-2.1,4.7H1.4c-2.2,0-3.3-2.7-2.1-4.7l12-20C11.8-0.2,12.2-0.2,12.8,0.7z',
+                        length: '12%',
+                        width: 5,
+                        offsetCenter: [0, '-58%'],
+                        itemStyle: {
+                            color: color
+                        }
+                    },
+                    axisTick: {
+                        length: 5,
+                        lineStyle: {
+                            color: 'auto',
+                            width: 1
+                        }
+                    },
+                    splitLine: {
+                        length: 8,
+                        lineStyle: {
+                            color: 'auto',
+                            width: 1.5
+                        }
+                    },
+                    axisLabel: {
+                        color: '#8e8e93',
+                        fontSize: 9,
+                        distance: -35,
+                        formatter: function (value) {
+                            if (value === -100) return '极空';
+                            if (value === -50) return '偏空';
+                            if (value === 0) return '中性';
+                            if (value === 50) return '偏多';
+                            if (value === 100) return '极多';
+                            return '';
+                        }
+                    },
+                    title: {
+                        offsetCenter: [0, '-25%'],
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                        color: color
+                    },
+                    detail: {
+                        fontSize: 18,
+                        offsetCenter: [0, '5%'],
+                        valueAnimation: true,
+                        formatter: function (value) {
+                            return (value >= 0 ? '+' : '') + value + '%';
+                        },
+                        color: '#ffffff',
+                        fontFamily: 'Outfit'
+                    },
+                    data: [
+                        {
+                            value: percent,
+                            name: rating
+                        }
+                    ]
+                }
+            ]
+        };
+        
+        consensusChart.setOption(option, true);
+    }
+
+    function updateScoreBar(elementId, score, valElementId) {
+        const bar = document.getElementById(elementId);
+        const valSpan = document.getElementById(valElementId);
+        if (!bar || !valSpan) return;
+        
+        valSpan.innerText = (score >= 0 ? '+' : '') + score;
+        
+        if (score >= 0) {
+            valSpan.style.color = 'var(--danger)';
+            bar.style.background = 'var(--danger)';
+            bar.style.left = '50%';
+            bar.style.width = (score / 2.0) + '%';
+        } else {
+            valSpan.style.color = 'var(--success)';
+            bar.style.background = 'var(--success)';
+            const absScore = Math.abs(score);
+            bar.style.left = (50.0 - absScore / 2.0) + '%';
+            bar.style.width = (absScore / 2.0) + '%';
+        }
+    }
+
+    function updateConsensusDecision() {
+        fetch(`/api/consensus_decision?interval=${currentTimeframe}`)
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    const score = res.score;
+                    const rating = res.rating;
+                    const details = res.details;
+                    const advice = res.advice;
+                    
+                    drawConsensusGauge(score, rating);
+
+                    const badge = document.getElementById('consensus-rating-badge');
+                    if (badge) {
+                        badge.innerText = rating;
+                        badge.style.background = score >= 0.6 ? 'rgba(255, 69, 58, 0.15)' :
+                                                 score >= 0.2 ? 'rgba(255, 69, 58, 0.08)' :
+                                                 score <= -0.6 ? 'rgba(48, 209, 88, 0.15)' :
+                                                 score <= -0.2 ? 'rgba(48, 209, 88, 0.08)' : 'rgba(255, 255, 255, 0.05)';
+                        badge.style.color = score >= 0.2 ? 'var(--danger)' :
+                                            score <= -0.2 ? 'var(--success)' : 'var(--text-secondary)';
+                    }
+
+                    // 极端乖离醒目提示
+                    const extremeWarn = document.getElementById('extreme-divergence-warn');
+                    if (extremeWarn) {
+                        const isExtreme = Math.abs(score) >= 0.6 && details.dmi >= 80;
+                        if (isExtreme) {
+                            extremeWarn.style.display = 'inline-flex';
+                            extremeWarn.title = '⚠️ 极端乖离风险：强趋势末端，历史回测中此状态后常出现超买/超卖反弹，追高需格外谨慎';
+                        } else {
+                            extremeWarn.style.display = 'none';
+                        }
+                    }
+
+                    updateScoreBar('bar-ma', details.ma, 'score-ma-val');
+                    updateScoreBar('bar-macd', details.macd, 'score-macd-val');
+                    updateScoreBar('bar-rsi', details.rsi, 'score-rsi-val');
+                    updateScoreBar('bar-kdj', details.kdj, 'score-kdj-val');
+                    updateScoreBar('bar-cci', details.cci, 'score-cci-val');
+                    updateScoreBar('bar-boll', details.boll, 'score-boll-val');
+                    updateScoreBar('bar-wr', details.wr, 'score-wr-val');
+                    updateScoreBar('bar-dmi', details.dmi, 'score-dmi-val');
+                    updateScoreBar('bar-bias', details.bias, 'score-bias-val');
+                    updateScoreBar('bar-obv', details.obv, 'score-obv-val');
+                    updateScoreBar('bar-roc', details.roc, 'score-roc-val');
+                    updateScoreBar('bar-cr', details.cr, 'score-cr-val');
+
+                    // 量价背离预警：OBV 为负值时闪烁标记
+                    const obvBar = document.getElementById('bar-obv');
+                    const obvVal = document.getElementById('score-obv-val');
+                    if (obvBar && details.obv < 0) {
+                        obvBar.style.animation = 'pulse-warn 1.5s ease-in-out infinite';
+                        obvVal.title = '⚠️ 量价背离：价格上涨但资金未配合，警惕虚涨';
+                        obvVal.style.textShadow = '0 0 4px rgba(255,69,58,0.4)';
+                    } else if (obvBar) {
+                        obvBar.style.animation = 'none';
+                        obvVal.title = '';
+                        obvVal.style.textShadow = 'none';
+                    }
+
+                    // KDJ 准死叉预警：KDJ 评分为正但高位趋弱时闪烁
+                    const kdjBar = document.getElementById('bar-kdj');
+                    const kdjVal = document.getElementById('score-kdj-val');
+                    if (kdjBar && details.kdj > 0 && details.kdj < 50 && details.dmi >= 60) {
+                        kdjBar.style.boxShadow = '0 0 4px rgba(212,168,83,0.6)';
+                        kdjVal.title = '⚠️ KDJ 高位趋弱：即将形成死叉，短线注意回调';
+                    } else if (kdjBar) {
+                        kdjBar.style.boxShadow = 'none';
+                        kdjVal.title = '';
+                    }
+
+                    const adviceEl = document.getElementById('consensus-advice-card');
+                    if (adviceEl) {
+                        adviceEl.innerText = advice;
+                    }
+                }
+            })
+            .catch(err => console.error("Error fetching consensus decision:", err));
+    }
+
+    function closeDiagnosticModal(e) {
+        if (e) {
+            e.stopPropagation();
+            if (typeof e.preventDefault === 'function') e.preventDefault();
+        }
+        const modal = document.getElementById('diagnostic-modal');
+        if (modal) modal.style.display = 'none';
+        
+        isModalOpen = false;
+        isModalClosing = true;
+        setTimeout(() => {
+            isModalClosing = false;
+        }, 300); // 300ms 防抖忽略期
+    }
+
+    function showSignalDiagnostic(date, price, type) {
+        if (!cachedChartData) return;
+        isModalOpen = true;
+        
+        // 1. 查找信号所属模型和描述 (历史或预测)
+        let signalObj = null;
+        if (cachedChartData.signals) {
+            signalObj = cachedChartData.signals.find(s => s.date === date);
+        }
+        if (!signalObj && cachedForecastData && cachedForecastData.signals) {
+            signalObj = cachedForecastData.signals.find(s => s.date === date);
+        }
+        
+        // 2. 提取该时刻的技术指标数据 (区分历史与未来预测)
+        let curPrice = null;
+        let ma5Val = null, ma20Val = null, ma60Val = null, ma120Val = null;
+        let bollUpper = null, bollLower = null;
+        let difVal = null, deaVal = null, histVal = null;
+        let rsiVal = null;
+        let kVal = null, dVal = null, jVal = null;
+        let cciVal = null;
+        let volVal = 0, prevVol = 0;
+        
+        let isForecastPoint = cachedForecastData && cachedForecastData.labels.includes(date);
+        
+        if (isForecastPoint) {
+            const fIdx = cachedForecastData.labels.indexOf(date);
+            const pt = (cachedForecastData.forecast_points && cachedForecastData.forecast_points[fIdx]) ? 
+                       cachedForecastData.forecast_points[fIdx] : null;
+            
+            curPrice = cachedForecastData.predictions[fIdx];
+            if (pt) {
+                ma5Val = pt.ma5;
+                ma20Val = pt.ma20;
+                ma60Val = pt.ma60;
+                ma120Val = pt.ma120;
+                bollUpper = pt.bollinger_upper;
+                bollLower = pt.bollinger_lower;
+                difVal = pt.macd_dif;
+                deaVal = pt.macd_dea;
+                histVal = pt.macd_hist;
+                rsiVal = pt.rsi;
+                kVal = pt.kdj_k;
+                dVal = pt.kdj_d;
+                jVal = pt.kdj_j;
+                cciVal = pt.cci;
+                volVal = pt.volume || 0;
+                wrVal = pt.wr;
+                dmiPlusVal = pt.dmi_plus_di;
+                dmiMinusVal = pt.dmi_minus_di;
+                dmiAdxVal = pt.dmi_adx;
+                bias6Val = pt.bias6;
+                obvVal = pt.obv;
+                rocVal = pt.roc;
+                crVal = pt.cr;
+            }
+            // 预测周期的前一天如果是最后一天的历史成交量
+            prevVol = (fIdx === 0 && cachedChartData.volumes) ? 
+                      cachedChartData.volumes[cachedChartData.volumes.length - 1] : 
+                      (fIdx > 0 && cachedForecastData.forecast_points[fIdx - 1] ? 
+                       cachedForecastData.forecast_points[fIdx - 1].volume : 0);
+        } else {
+            const idx = cachedChartData.labels.indexOf(date);
+            if (idx === -1) {
+                isModalOpen = false;
+                return;
+            }
+            curPrice = cachedChartData.prices[idx];
+            ma5Val = cachedChartData.ma5[idx];
+            ma20Val = cachedChartData.ma20[idx];
+            ma60Val = cachedChartData.ma60[idx];
+            ma120Val = cachedChartData.ma120[idx];
+            bollUpper = cachedChartData.bollinger_upper[idx];
+            bollLower = cachedChartData.bollinger_lower[idx];
+            difVal = cachedChartData.macd_dif[idx];
+            deaVal = cachedChartData.macd_dea[idx];
+            histVal = cachedChartData.macd_hist[idx];
+            rsiVal = cachedChartData.rsi[idx];
+            kVal = cachedChartData.kdj_k[idx];
+            dVal = cachedChartData.kdj_d[idx];
+            jVal = cachedChartData.kdj_j[idx];
+            cciVal = cachedChartData.cci[idx];
+            volVal = cachedChartData.volumes ? cachedChartData.volumes[idx] : 0;
+            prevVol = (idx > 0 && cachedChartData.volumes) ? cachedChartData.volumes[idx - 1] : 0;
+            wrVal = cachedChartData.wr ? cachedChartData.wr[idx] : null;
+            dmiPlusVal = cachedChartData.dmi_plus_di ? cachedChartData.dmi_plus_di[idx] : null;
+            dmiMinusVal = cachedChartData.dmi_minus_di ? cachedChartData.dmi_minus_di[idx] : null;
+            dmiAdxVal = cachedChartData.dmi_adx ? cachedChartData.dmi_adx[idx] : null;
+            bias6Val = cachedChartData.bias6 ? cachedChartData.bias6[idx] : null;
+            obvVal = cachedChartData.obv ? cachedChartData.obv[idx] : null;
+            rocVal = cachedChartData.roc ? cachedChartData.roc[idx] : null;
+            crVal = cachedChartData.cr ? cachedChartData.cr[idx] : null;
+        }
+        
+        // 更新基本信息
+        document.getElementById('diagnostic-date').innerText = (isForecastPoint ? '🔮 ' : '') + date;
+        document.getElementById('diagnostic-price').innerText = `¥${curPrice.toFixed(2)} /克`;
+        
+        const badge = document.getElementById('diagnostic-badge');
+        if (type === 'B') {
+            badge.innerText = isForecastPoint ? '未来预期多头' : '买入信号 (BUY)';
+            badge.style.background = 'var(--danger)';
+        } else {
+            badge.innerText = isForecastPoint ? '未来预期空头' : '卖出信号 (SELL)';
+            badge.style.background = 'var(--success)';
+        }
+        
+        // 动态生成各项指标诊断细节
+        let detailsHtml = '';
+        
+        // 0. 核心策略触发说明
+        if (signalObj) {
+            const schemeNames = {
+                'trend': '趋势顺势模型 (Trend Follow)',
+                'breakout': '波动突破模型 (Volatility Breakout)',
+                'reversion': '均值回归模型 (Mean Reversion)'
+            };
+            const schemeName = schemeNames[signalObj.scheme] || '多因子量化融合模型';
+            const schemeColor = signalObj.scheme === 'trend' ? '#ffd60a' :
+                                signalObj.scheme === 'breakout' ? '#bf5af2' : '#64d2ff';
+            const alertText = isForecastPoint ? '🔮 预测趋势触发' : '🎯 历史轨迹触发';
+            
+            detailsHtml += `
+                <div style="padding: 12px; background: rgba(10, 132, 255, 0.05); border-radius: 8px; border: 1px solid rgba(10, 132, 255, 0.15); margin-bottom: 8px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:12px;">
+                        <span style="font-weight: 700; color: ${schemeColor};">🎯 触发策略：${schemeName}</span>
+                        <span style="font-size:10px; color:#8e8e93; font-weight:500;">${alertText}</span>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-primary); line-height: 1.6; font-weight: 500;">${signalObj.desc}</div>
+                </div>
+            `;
+        }
+        
+        // 1. 均线系统诊断
+        let maDesc = '';
+        if (type === 'B') {
+            maDesc = `短期均线 MA5 (¥${ma5Val ? ma5Val.toFixed(2) : '--'}) 向上突破中线 MA20 (¥${ma20Val ? ma20Val.toFixed(2) : '--'}) 形成金叉，价格站上均线系统上方，短期上行趋势确立。`;
+            if (ma60Val && ma120Val) {
+                if (ma5Val > ma60Val && ma5Val > ma120Val) {
+                    maDesc += ` 且价格已站稳中长期均线 MA60 及 MA120 上方，表明中长线已由空头转为多头主导。`;
+                } else {
+                    maDesc += ` 但由于当前价格仍受制于中长期均线 MA60/120，此信号属于大空头背景下的超跌金叉反弹，需谨慎追高。`;
+                }
+            }
+        } else {
+            maDesc = `短期均线 MA5 (¥${ma5Val ? ma5Val.toFixed(2) : '--'}) 向下跌破中线 MA20 (¥${ma20Val ? ma20Val.toFixed(2) : '--'}) 形成死叉，表明多头支撑破位，下行回调通道开启。`;
+            if (ma60Val && ma120Val) {
+                if (ma5Val < ma60Val || ma5Val < ma120Val) {
+                    maDesc += ` 此时价格已跌破中长期均线，属于顺应中长线空头的大势共振杀跌，下行阻力极小。`;
+                }
+            }
+        }
+        detailsHtml += `
+            <div style="padding: 10px 12px; background: rgba(255,255,255,0.01); border-radius: 8px; border-left: 3px solid #ffd60a;">
+                <div style="font-weight: 600; font-size: 12px; color: var(--text-primary); margin-bottom: 4px;">📈 均线趋势诊断</div>
+                <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.5;">${maDesc}</div>
+            </div>
+        `;
+        
+        // 2. MACD 动能诊断
+        let macdDesc = '';
+        if (difVal !== null && deaVal !== null && histVal !== null) {
+            macdDesc = `DIF 快线为 ${difVal.toFixed(3)}，DEA 慢线为 ${deaVal.toFixed(3)}。`;
+            if (type === 'B') {
+                if (histVal >= 0) {
+                    macdDesc += `MACD 动能柱红柱显现，动能值为 +${histVal.toFixed(3)}。快线处于慢线上方且开口向上，说明多头拉升动能正在加速聚集，突破概率较高。`;
+                } else {
+                    macdDesc += `虽然动能柱目前仍呈绿柱，但负值正快速收窄，表明空头抛压基本耗尽，买盘力量开始探底回升。`;
+                }
+            } else {
+                if (histVal <= 0) {
+                    macdDesc += `MACD 动能柱绿柱扩散，动能值为 ${histVal.toFixed(3)}。快线跌破慢线死叉发散，空头卖盘动能占据绝对主导，价格有进一步寻底压力。`;
+                } else {
+                    macdDesc += `红柱高度开始收缩，多头拉升出现衰竭迹象，获利盘回吐急需出逃。`;
+                }
+            }
+        } else {
+            macdDesc = 'MACD指标数据不足，无法完成动能判定。';
+        }
+        detailsHtml += `
+            <div style="padding: 10px 12px; background: rgba(255,255,255,0.01); border-radius: 8px; border-left: 3px solid #ff9f0a;">
+                <div style="font-weight: 600; font-size: 12px; color: var(--text-primary); margin-bottom: 4px;">📊 MACD 动能诊断</div>
+                <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.6;">${macdDesc}</div>
+            </div>
+        `;
+        
+        // 3. RSI / KDJ / CCI 超买超卖诊断
+        let oscDesc = '';
+        if (rsiVal !== null && kVal !== null && dVal !== null && jVal !== null && cciVal !== null) {
+            oscDesc = `RSI(14) 强弱度为 ${rsiVal.toFixed(1)}（中性区间）。KDJ 指标金叉/死叉数值：K=${kVal.toFixed(1)}，D=${dVal.toFixed(1)}，J=${jVal.toFixed(1)}。CCI 顺势指标为 ${cciVal.toFixed(1)}。`;
+            if (type === 'B') {
+                if (rsiVal < 35 || cciVal < -100) {
+                    oscDesc += ` 检测到 RSI/CCI 指标此前严重超卖。此次金叉属于低位超跌强力回弹信号，反弹爆发力极强。`;
+                } else if (rsiVal > 65) {
+                    oscDesc += ` RSI 此时已接近超买区，说明买方追高意愿虽强，但短线继续拉升的空间有限，需提防高位回踩。`;
+                } else {
+                    oscDesc += ` 各项振荡指标分布于中性蓄势区，无超买超卖积压，金叉突破信号扎实可靠。`;
+                }
+            } else {
+                if (rsiVal > 65 || cciVal > 100) {
+                    oscDesc += ` 检测到指标处于超买极值点，此次抛盘信号属于高位超买见顶杀跌，调整需求非常迫切。`;
+                } else {
+                    oscDesc += ` 各指标从中值区拐头向下，确认多空博弈中买方气势衰退，卖盘阻力开始显现。`;
+                }
+            }
+        } else {
+            oscDesc = '震荡指标样本数据不完整，无法诊断超买超卖共识。';
+        }
+        detailsHtml += `
+            <div style="padding: 10px 12px; background: rgba(255,255,255,0.01); border-radius: 8px; border-left: 3px solid #ff375f;">
+                <div style="font-weight: 600; font-size: 12px; color: var(--text-primary); margin-bottom: 4px;">🔮 振荡指标共识 (RSI/KDJ/CCI)</div>
+                <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.6;">${oscDesc}</div>
+            </div>
+        `;
+        
+        // 4. 成交量配合诊断
+        let volDesc = `当前周期成交量为 ${volVal.toLocaleString()} 手。`;
+        if (prevVol > 0) {
+            const volRate = ((volVal - prevVol) / prevVol * 100).toFixed(1);
+            if (volVal > prevVol) {
+                volDesc += ` 相比前一周期**放量增长了 ${volRate}%**，说明多空双方在此时刻意见达成一致并伴随主力建仓，量价配合理想，信号可靠度显著增加。`;
+            } else {
+                volDesc += ` 相比前一周期**缩量 ${Math.abs(volRate)}%**。本次突破属于无量上涨/下跌，可能存在主力诱多/诱空行为，属于弱突破，需配合仓位管理谨慎交易。`;
+            }
+        }
+        detailsHtml += `
+            <div style="padding: 10px 12px; background: rgba(255,255,255,0.01); border-radius: 8px; border-left: 3px solid #64d2ff;">
+                <div style="font-weight: 600; font-size: 12px; color: var(--text-primary); margin-bottom: 4px;">⚡ 成交量量价配合度</div>
+                <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.6;">${volDesc}</div>
+            </div>
+        `;
+        
+        document.getElementById('diagnostic-details-container').innerHTML = detailsHtml;
+        
+        // 渲染 Lucide 图标
+        setTimeout(() => {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }, 50);
+        
+        // 显示 Modal
+        const modal = document.getElementById('diagnostic-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+        }
+    }
+
+    function updateDynamicTrendAnalysis() {
+        if (!cachedChartData) return;
+        
+        const res = cachedChartData;
+        const n = res.prices ? res.prices.length : 0;
+        if (n === 0) return;
+        
+        const lastIdx = n - 1;
+        const curPrice = res.prices[lastIdx];
+        const ma5Val = res.ma5 ? res.ma5[lastIdx] : null;
+        const ma20Val = res.ma20 ? res.ma20[lastIdx] : null;
+        const ma60Val = res.ma60 ? res.ma60[lastIdx] : null;
+        const ma120Val = res.ma120 ? res.ma120[lastIdx] : null;
+        const bollUpper = res.bollinger_upper ? res.bollinger_upper[lastIdx] : null;
+        const bollLower = res.bollinger_lower ? res.bollinger_lower[lastIdx] : null;
+        
+        // 1. 均线分析
+        let maAnalysis = '';
+        if (ma5Val !== null && ma20Val !== null && ma60Val !== null && ma120Val !== null) {
+            if (ma5Val > ma20Val && ma20Val > ma60Val && ma60Val > ma120Val) {
+                maAnalysis = `均线系统目前处于极佳的<strong>多头排列</strong>（MA5 > MA20 > MA60 > MA120）。这显示黄金趋势处在强势的上行牛市轨道。每次均线回踩（如回探 MA20 ¥${ma20Val.toFixed(2)}）均可视为强有力的多头买盘支撑点，中期上攻行情依然稳固。`;
+            } else if (ma5Val < ma20Val && ma20Val < ma60Val && ma60Val < ma120Val) {
+                maAnalysis = `均线系统当前呈现典型的<strong>空头排列</strong>（MA5 < MA20 < MA60 < MA120）。短期线、中轨与长期下行支撑重挫破位。这暗示金价下行趋势十分明确，每一轮反弹在 MA20（¥${ma20Val.toFixed(2)}）处都将面临密集的空头反扑，暂无见底反转信号。`;
+            } else {
+                maAnalysis = `均线系统当前呈<strong>纠缠走平态势</strong>。短期均线（MA5/MA20）围绕中长期均线（MA60/MA120）反复拉锯。黄金目前在 <strong>¥${ma20Val.toFixed(2)} ~ ¥${ma60Val.toFixed(2)}</strong> 的区间内进行缩量横盘整理或等待多空决议，方向选择一触即发。`;
+            }
+        } else {
+            maAnalysis = `均线指标样本不足，目前金价在 <strong>¥${curPrice.toFixed(2)}</strong> 附近小幅整理。`;
+        }
+        
+        // 2. 布林带分析
+        let bollAnalysis = '';
+        if (bollUpper !== null && bollLower !== null) {
+            if (curPrice >= bollUpper * 0.995) {
+                bollAnalysis = `金价目前已经<strong>强力冲出布林上轨 (¥${bollUpper.toFixed(2)})</strong>。这表明多头情绪极度狂热，波动率已被拉满至异常偏离值。在技术面上属于极端超买，短期多头强拉动能容易衰竭，追高需极度防范获利盘涌出导致的探顶回落。`;
+            } else if (curPrice <= bollLower * 1.005) {
+                bollAnalysis = `金价当前<strong>探底跌破布林下轨 (¥${bollLower.toFixed(2)})</strong>。这预示着短期恐慌性抛盘涌现，价格偏离常态波动范围。但在统计学上该位置提供极佳的左侧安全边际，空头力量处于衰竭边界，价格随时有均值回归的强力超跌反弹可能。`;
+            } else {
+                bollAnalysis = `金价稳步运行在布林中轨常态通道内。当前通道整体宽度平稳，没有发生明显的单边扩张，显示市场仍处于常态波动区间内。中轨 ¥${((bollUpper + bollLower)/2).toFixed(2)} 将作为多空短期强弱分界线。`;
+            }
+        } else {
+            bollAnalysis = `布林带样本不足，无法评估目前的通道波动率范围。`;
+        }
+        
+        // 3. 当前选定副图指标分析
+        let subplotTitle = '';
+        let subplotFormula = '';
+        let subplotPurpose = '';
+        let subplotAnalysis = '';
+        const ind = currentSubplotIndicator;
+        
+        if (ind === 'macd') {
+            subplotTitle = 'MACD (指数平滑异同移动平均线)';
+            subplotFormula = 'DIF = EMA(12) − EMA(26)；DEA = EMA(DIF, 9)；柱状(MACD) = 2 × (DIF − DEA)';
+            subplotPurpose = '判断趋势方向、动能强弱和转折点。DIF上穿DEA为金叉（看涨），下穿为死叉（看跌），柱状由负转正量能放大预示底部反转';
+            const dif = res.macd_dif ? res.macd_dif[lastIdx] : null;
+            const dea = res.macd_dea ? res.macd_dea[lastIdx] : null;
+            const hist = res.macd_hist ? res.macd_hist[lastIdx] : null;
+            
+            if (dif !== null && dea !== null && hist !== null) {
+                let statusText = '';
+                if (dif > 0 && dea > 0) {
+                    if (hist > 0) {
+                        statusText = `MACD 双线位于<strong>零轴上方强势区运行，红柱多头能量持续发散</strong>（DIF: ${dif.toFixed(3)}, DEA: ${dea.toFixed(3)}）。表明当前多方占据市场绝对主导，红柱发散显示拉升斜率依然陡峭，属于强多头单边行情。`;
+                    } else {
+                        statusText = `MACD 虽处于<strong>零轴上方强势区，但红柱动能开始收缩</strong>。DIF 与 DEA 双线高位粘合趋近，预示短期多头推升动能见顶，斜率放缓，日内有震荡整理或小幅回调迹象。`;
+                    }
+                } else if (dif < 0 && dea < 0) {
+                    if (hist < 0) {
+                        statusText = `MACD 双线位于<strong>零轴下方弱势区，且绿柱空头动能持续放大</strong>（DIF: ${dif.toFixed(3)}, DEA: ${dea.toFixed(3)}）。这代表空头筹码极度充沛，处于单边单向下行趋势，短期抛压仍在惯性下挫，不建议左侧盲目抄底。`;
+                    } else {
+                        statusText = `MACD 双线处于<strong>零轴下方弱势区，但绿柱动能开始收缩</strong>。DEA 与 DIF 低位靠拢，显示虽然大势偏空，但空方杀跌意愿已经开始衰竭，短线可能展开一波弱势反弹。`;
+                    }
+                } else {
+                    statusText = `MACD 双线位于<strong>零轴分水岭附近缠绕</strong>，红绿动能柱频繁转换。表明目前市场动能较弱，缺乏大资金单边破位引导，正处于胶着的无方向盘整市。`;
+                }
+                subplotAnalysis = statusText;
+            } else {
+                subplotAnalysis = `MACD 指标数据正在计算中...`;
+            }
+            
+        } else if (ind === 'rsi') {
+            subplotTitle = 'RSI (相对强弱指标)';
+            subplotFormula = 'RSI(14) = 100 − 100 / (1 + RS)；RS = 14日内上涨均值 ÷ 14日内下跌均值';
+            subplotPurpose = '衡量价格上涨与下跌力道的对比。>70为超买区间（回调风险高），<30为超卖区间（反弹机会大），50为中轴多空分界';
+            const rsi = res.rsi ? res.rsi[lastIdx] : null;
+            if (rsi !== null) {
+                let statusText = '';
+                if (rsi > 70) {
+                    statusText = `当前 <strong>RSI 值为 ${rsi.toFixed(2)}，进入 >70 严重超买区间</strong>。买方资金过度追涨，多头筹码处于拥挤状态，短线多方动能出现透支，警惕随之而来的回踩和获利回吐风险。`;
+                } else if (rsi < 30) {
+                    statusText = `当前 <strong>RSI 值为 ${rsi.toFixed(2)}，已跌入 <30 极度超卖区间</strong>。卖盘恐慌释放完毕，处于短期“黄金坑”筑底买点。指标提供高强度的左侧止跌回暖预期，属于高安全边际点位。`;
+                } else if (rsi >= 55) {
+                    statusText = `当前 <strong>RSI 值为 ${rsi.toFixed(2)}，处于 50-70 的偏强中性区</strong>。买方力量稳步占据优势，价格呈现上升轨运行，尚未出现超买透支，上涨势头较为健康。`;
+                } else if (rsi <= 45) {
+                    statusText = `当前 <strong>RSI 值为 ${rsi.toFixed(2)}，处于 30-50 的偏弱中性区</strong>。空头情绪占据微弱优势，价格偏下行试探支撑，属于弱势防守阶段，需重点关注下方均线支承。`;
+                } else {
+                    statusText = `当前 <strong>RSI 值为 ${rsi.toFixed(2)}，处于 45-55 的多空绝对中性区</strong>。市场资金处于观望状态，买卖意愿极度均衡，正蓄势等待宏观消息面破局。`;
+                }
+                subplotAnalysis = statusText;
+            } else {
+                subplotAnalysis = `RSI 指标数据正在计算中...`;
+            }
+            
+        } else if (ind === 'kdj') {
+            subplotTitle = 'KDJ (随机震荡指标)';
+            subplotFormula = 'RSV = (收盘−N日最低) / (N日最高−N日最低) × 100；K = 2/3前K + 1/3RSV；D = 2/3前D + 1/3K；J = 3K − 2D';
+            subplotPurpose = '反映价格在N日波段内的相对位置。K上穿D为金叉（买点），下穿为死叉（卖点）；J>100极强超买，J<0极弱超卖';
+            const k = res.kdj_k ? res.kdj_k[lastIdx] : null;
+            const d = res.kdj_d ? res.kdj_d[lastIdx] : null;
+            const j = res.kdj_j ? res.kdj_j[lastIdx] : null;
+            
+            if (k !== null && d !== null && j !== null) {
+                let statusText = `当前 KDJ 随机指标中，<strong>K 值为 ${k.toFixed(2)}，D 值为 ${d.toFixed(2)}，J 值为 ${j.toFixed(2)}</strong>。`;
+                
+                // 判断交叉信号
+                let crossSignal = '';
+                const prevK = res.kdj_k[lastIdx - 1];
+                const prevD = res.kdj_d[lastIdx - 1];
+                if (prevK && prevD) {
+                    if (prevK <= prevD && k > d) {
+                        crossSignal = ` 且指标在近期形成了<strong>底位金叉突破</strong>（K线上穿D线），是典型的买入确认偏多信号。`;
+                    } else if (prevK >= prevD && k < d) {
+                        crossSignal = ` 且指标在近期形成了<strong>高位死叉破位</strong>（K线下穿D线），提示短期金价有强烈的探顶回调风险。`;
+                    }
+                }
+                
+                let rangeText = '';
+                if (j > 100) {
+                    rangeText = ` <strong>J 线目前严重超买（J: ${j.toFixed(2)} > 100）</strong>，这代表多头拉升处于极端钝化极限，短线发生回折回调是极高概率事件。`;
+                } else if (j < 0) {
+                    rangeText = ` <strong>J 线目前跌破极值（J: ${j.toFixed(2)} < 0）</strong>，这预示着短期恐慌踩踏致价格过度偏离，空方筹码宣泄完毕，底部即将构筑。`;
+                } else {
+                    rangeText = ` 指标运行在常态区间，未出现极端非理性偏离，多空节奏跟随均线方向波动。`;
+                }
+                subplotAnalysis = statusText + rangeText + crossSignal;
+            } else {
+                subplotAnalysis = `KDJ 指标数据正在计算中...`;
+            }
+            
+        } else if (ind === 'cci') {
+            subplotTitle = 'CCI (顺势通道指标)';
+            subplotFormula = 'CCI(14) = (典型价格 − MA14) / (0.015 × 14日平均绝对偏差)；典型价格采用收盘价近似';
+            subplotPurpose = '衡量价格偏离统计均值的程度。>100为强势异常（超买加速），<−100为弱势异常（超卖恐慌），±100之间为常态波动';
+            const cci = res.cci ? res.cci[lastIdx] : null;
+            if (cci !== null) {
+                let statusText = '';
+                if (cci > 100) {
+                    statusText = `当前 <strong>CCI 指标为 ${cci.toFixed(2)}，成功冲出 +100 强势边界</strong>。这表明当前金价已经进入非常强势的单边拉升阶段。在短线博弈中，代表行情进入爆发加速期，具有强劲的向上偏多溢价特征。`;
+                } else if (cci < -100) {
+                    statusText = `当前 <strong>CCI 指标为 ${cci.toFixed(2)}，深跌至 -100 超卖边界下方</strong>。这代表价格偏离常态均值幅度异常过大，空头短期砸盘行为达到了情绪极点，已进入非理性恐慌甩卖区间，处于蓄势随时止跌的左侧位置。`;
+                } else {
+                    statusText = `当前 <strong>CCI 指标为 ${cci.toFixed(2)}，运行在 [-100, +100] 常态常模区间内</strong>。这表示金价并未出现偏离常态均值的大暴动，价格波段随中轨 MA20 进行健康整固，没有极端的超买或超卖偏离。`;
+                }
+                subplotAnalysis = statusText;
+            } else {
+                subplotAnalysis = `CCI 指标数据正在计算中...`;
+            }
+            
+        } else if (ind === 'volume') {
+            subplotTitle = 'VOLUME (成交量量价配合)';
+            subplotFormula = '每交易日的成交手数累计。红柱=当日收涨，绿柱=当日收跌';
+            subplotPurpose = '验证价格趋势的有效性。价升量增=健康上涨，价升量缩=上涨乏力（背离），价跌量增=恐慌抛售（加速赶底）';
+            const vol = res.volumes ? res.volumes[lastIdx] : 0;
+            let avgVol = 0;
+            if (res.volumes && res.volumes.length >= 10) {
+                const volSlice = res.volumes.slice(Math.max(0, n - 10), n);
+                avgVol = volSlice.reduce((sum, v) => sum + v, 0) / volSlice.length;
+            }
+            
+            if (vol > 0) {
+                const volRatio = avgVol > 0 ? (vol / avgVol) : 1.0;
+                let statusText = `当前金价成交量为 <strong>${vol.toFixed(0)} 手</strong>，10日平均成交量为 <strong>${avgVol.toFixed(0)} 手</strong>，量能倍率达 <strong>${volRatio.toFixed(2)} 倍</strong>。`;
+                
+                // 价量关系研判
+                let priceDirection = '平盘';
+                const curP = res.prices[lastIdx];
+                const prevP = res.prices[lastIdx - 1];
+                if (prevP) {
+                    priceDirection = curP > prevP ? '上涨' : '下跌';
+                }
+                
+                let volumeDesc = '';
+                if (volRatio >= 1.4) {
+                    if (priceDirection === '上涨') {
+                        volumeDesc = ` 呈现典型的<strong>“放量大涨”</strong>形态。增量避险或抄底买盘资金大举入场，主力机构意愿高度统一，属于健康且强劲的多头主导上涨。`;
+                    } else {
+                        volumeDesc = ` 呈现典型的<strong>“放量大跌”</strong>形态。空方大肆抛售压制，市场上引发了恐慌性盘面承接或踩踏破位，短线风险较大，不宜在此刻左侧死扛仓位。`;
+                    }
+                } else if (volRatio <= 0.65) {
+                    if (priceDirection === '上涨') {
+                        volumeDesc = ` 呈现<strong>“缩量拉升”</strong>形态。金价虽有小涨，但由于买方量能极其疲弱，无量空涨极易受到短线抛盘打压，说明追多情绪匮乏，有假突破及探顶诱多可能。`;
+                    } else {
+                        volumeDesc = ` 呈现<strong>“无量阴跌”</strong>形态。卖压虽然在减弱，但买方也无入场意愿，处于阴跌消耗格局，仍需等待放量见底大阳线的出现。`;
+                    }
+                } else {
+                    volumeDesc = ` 呈现<strong>“量价常态配合”</strong>。金价在正常筹码交换中健康前行，无突发恐慌资金砸盘或强力拉升，走势保持均衡惯性。`;
+                }
+                subplotAnalysis = statusText + volumeDesc;
+            } else {
+                subplotAnalysis = `成交量数据正在获取中...`;
+            }
+        } else if (ind === 'wr') {
+            subplotTitle = 'W&R/Williams %R (威廉指标)';
+            subplotFormula = 'W&R(14) = (14日最高 − 当日收盘) / (14日最高 − 14日最低) × 100';
+            subplotPurpose = '反映收盘价在N日波段内的相对位置，值域[0,100]。0−20=超买(价格在波段顶部)，80−100=超卖(价格在波段底部)，与RSI互为补充验证';
+            const wr = res.wr ? res.wr[lastIdx] : null;
+            if (wr !== null) {
+                if (wr > 80) {
+                    subplotAnalysis = `当前 W&R 值 <strong>${wr.toFixed(2)}</strong>，处于<strong>80−100超卖区间</strong>。价格已接近14日波段最低点，卖方动能充分释放。超卖区间通常意味着阶段性底部正在形成，左侧交易者可关注止跌信号和成交量配合，等待反弹确认。`;
+                } else if (wr < 20) {
+                    subplotAnalysis = `当前 W&R 值 <strong>${wr.toFixed(2)}</strong>，处于<strong>0−20超买区间</strong>。价格已逼近14日波段最���点，买方追高动能透支。超买区间提示短期回调风险急剧上升，多单持仓者应考虑减仓锁定利润。`;
+                } else {
+                    subplotAnalysis = `当前 W&R 值 <strong>${wr.toFixed(2)}</strong>，处于<strong>20−80中性区间</strong>。价格在14日波段的中段位置运行，多空力量均衡，无极端超买超卖偏离。典型震荡格局，需配合其他指标（RSI、KDJ）交叉确认方向。`;
+                }
+            } else { subplotAnalysis = 'W&R 指标数据不足，需更多交易日样本。'; }
+        } else if (ind === 'dmi') {
+            subplotTitle = 'DMI (趋向指标系统)';
+            subplotFormula = '+DI = 14日平滑上涨幅度 / 14日真实波幅 × 100；−DI同理用下跌幅度；ADX = 14日平滑(+DI与−DI差值的比例)';
+            subplotPurpose = '判断趋势方向与强度。+DI > −DI为多头主导，反之为空头主导。ADX>25为强趋势(顺势操作)，ADX<20为无趋势/震荡(观望或高抛低吸)';
+            const pdi = res.dmi_plus_di ? res.dmi_plus_di[lastIdx] : null;
+            const mdi = res.dmi_minus_di ? res.dmi_minus_di[lastIdx] : null;
+            const adx = res.dmi_adx ? res.dmi_adx[lastIdx] : null;
+            if (pdi !== null && mdi !== null && adx !== null) {
+                const direction = pdi > mdi ? '多头占优' : '空头占优';
+                const trendDesc = adx > 25 ? `趋势强度 ADX=${adx.toFixed(1)}>25，<strong>趋势明确</strong>，建议${pdi > mdi ? '顺势做多' : '顺势做空'}。` 
+                    : adx >= 20 ? `ADX=${adx.toFixed(1)}处于临界区间，趋势正在酝酿但尚未爆发。` 
+                    : `ADX=${adx.toFixed(1)}<20，<strong>无明显趋势</strong>，市场处于震荡混沌期，建议观望或高抛低吸。`;
+                subplotAnalysis = `当前 <strong>+DI=${pdi.toFixed(2)}，−DI=${mdi.toFixed(2)}</strong>，${direction}（+DI与−DI差值 ${Math.abs(pdi - mdi).toFixed(2)}）。${trendDesc}`;
+            } else { subplotAnalysis = 'DMI 指标数据不足，需更多交易日样本。'; }
+        } else if (ind === 'bias') {
+            subplotTitle = 'BIAS (乖离率)';
+            subplotFormula = 'BIAS(N) = (当日收盘 − MA(N)) / MA(N) × 100%；BIAS(6/12/24) 三线组合判断';
+            subplotPurpose = '衡量价格偏离均线的程度。负乖离过大=超跌（回归均线的反弹动力），正乖离过大=超涨（回落风险）。三线同时拐头为趋势反转预警信号';
+            const b6 = res.bias6 ? res.bias6[lastIdx] : null;
+            const b12 = res.bias12 ? res.bias12[lastIdx] : null;
+            const b24 = res.bias24 ? res.bias24[lastIdx] : null;
+            if (b6 !== null && b12 !== null && b24 !== null) {
+                let biasStatus = '';
+                if (b6 < -3 || b12 < -3) biasStatus = '短期乖离率处于<strong>严重负乖离</strong>区间，价格显著低于均线，存在向均线回归的强烈反弹需求。这是左侧抄底信号，需等止跌阳线确认。';
+                else if (b6 > 3 || b12 > 3) biasStatus = '短期乖离率处于<strong>严重正乖离</strong>区间，价格远高于均线，追高风险极大。乖离率偏大通常是止盈离场信号，等待回归后再考虑介入。';
+                else biasStatus = '三条乖离率线均在±3%正常范围内，价格紧贴均线运行。无趋势性偏离，属于震荡整理格局，需等待乖离率突破方向再做判断。';
+                subplotAnalysis = `当前 BIAS(6)=${b6.toFixed(2)}%, BIAS(12)=${b12.toFixed(2)}%, BIAS(24)=${b24.toFixed(2)}%。${biasStatus}`;
+            } else { subplotAnalysis = 'BIAS 指标数据不足，需更多交易日样本。'; }
+        } else if (ind === 'obv') {
+            subplotTitle = 'OBV (能量潮 / On-Balance Volume)';
+            subplotFormula = 'OBV = 前日OBV ± 当日成交量（涨=加量，跌=减量）。累计值反映资金净流向';
+            subplotPurpose = '验证价格趋势的资金支撑力度。OBV与价格同向=趋势健康，OBV与价格背离（价升OBV降）=虚假上涨/即将反转，OBV领先价格突破=资金提前布局';
+            const obvArr = res.obv;
+            if (obvArr && obvArr.length >= 6) {
+                const obvLast = obvArr[obvArr.length - 1];
+                const obv5ago = obvArr[obvArr.length - 6];
+                const obvChange = obvLast - obv5ago;
+                const trendDesc = obvChange > 0 ? '<strong>5日净流入</strong>，资金在低位回补迹象明显，量价配合偏多' 
+                    : '<strong>5日净流出</strong>，资金仍在撤离，量能不支持持续上涨';
+                subplotAnalysis = `当前 OBV 累计值约 ${(obvLast/1000).toFixed(0)}K。近5日OBV变动 ${obvChange > 0 ? '+' : ''}${(obvChange/1000).toFixed(0)}K，${trendDesc}。若OBV与价格同步上升则趋势健康，若出现价升OBV跌的背离形态则需警惕假突破回调。`;
+            } else { subplotAnalysis = 'OBV 指标数据不足，需更多交易日样本。'; }
+        } else if (ind === 'roc') {
+            subplotTitle = 'ROC (变动率指标 / Rate of Change)';
+            subplotFormula = 'ROC(12) = (当日收盘 − 12日前收盘) / 12日前收盘 × 100%';
+            subplotPurpose = '衡量价格的动量变化率。ROC>0=价格高于12日前（上升动量），ROC<0=价格低于12日前（下降动量），零轴突破通常预示趋势拐点，极值后回归为反转信号';
+            const roc = res.roc ? res.roc[lastIdx] : null;
+            if (roc !== null) {
+                let rocStatus = '';
+                if (roc > 5) rocStatus = '<strong>强势上升动量</strong>，价格短期内大幅攀升。ROC过高需警惕动量衰竭和获利回吐。';
+                else if (roc < -5) rocStatus = '<strong>强势下跌动量</strong>，价格短期内跌幅显著。ROC过低往往意味着恐慌超卖，反弹动能正在积聚。';
+                else if (roc > 0) rocStatus = '<strong>温和上升</strong>，上涨动能稳定但力度一般，需配合成交量判断持续性。';
+                else rocStatus = '<strong>温和下行</strong>，下跌动能可控，不属于恐慌性抛售。关注零轴突破信号确认方向。';
+                subplotAnalysis = `当前 ROC(12)=<strong>${roc.toFixed(2)}%</strong>，${rocStatus}`;
+            } else { subplotAnalysis = 'ROC 指标数据不足，需更多交易日样本。'; }
+        } else if (ind === 'cr') {
+            subplotTitle = 'CR (中间意愿指标)';
+            subplotFormula = 'CR(26) = 26日内累计上涨动量 ÷ 26日内累计下跌动量 × 100；上涨/下跌动量基于当日价与前日中间价的比较';
+            subplotPurpose = '衡量多空双方的攻击意愿对比。CR>200=多头极度亢奋（危险顶部），CR<60=空头过度打压（低估区域），CR在100附近为多空均衡';
+            const cr = res.cr ? res.cr[lastIdx] : null;
+            if (cr !== null) {
+                let crStatus = '';
+                if (cr > 200) crStatus = '<strong>CR远超200，极度危险</strong>。多头情绪过热，买盘拥挤，随时可能引发踩踏式回调。建议立即减仓或离场观望。';
+                else if (cr < 60) crStatus = '<strong>CR低于60低估区域</strong>。空方过度打压，卖盘衰竭，处于安全边际较高的左侧配置区间。可分批建仓等待情绪修复。';
+                else if (cr > 150) crStatus = '<strong>CR偏高区间(150−200)</strong>。多头情绪积极但尚未过热，上行仍有空间但需保持警惕。';
+                else crStatus = '<strong>CR处于正常中性区间(60−150)</strong>。多空意愿较为均衡，市场情绪理性，等待方向性催化剂。';
+                subplotAnalysis = `当前 CR(26)=<strong>${cr.toFixed(2)}</strong>，${crStatus}`;
+            } else { subplotAnalysis = 'CR 指标数据不足（需≥27个交易日），请延长查看周期。'; }
+        }
+        
+        const html = `
+            <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                <!-- 选定指标详细分析（含计算方式+作用） -->
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); padding: 18px; border-radius: 12px;">
+                    <div style="font-weight: 600; font-size: 14px; color: var(--primary); margin-bottom: 12px; display:flex; align-items:center; gap: 6px;">
+                        <span>⚡</span> ${subplotTitle}
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div style="background: rgba(201, 100, 66, 0.06); padding: 10px 12px; border-radius: 6px; border-left: 2px solid var(--primary);">
+                            <span style="font-size: 11px; color: var(--primary); text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">计算方式</span>
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5;">${subplotFormula}</div>
+                        </div>
+                        <div style="background: rgba(212, 168, 83, 0.06); padding: 10px 12px; border-radius: 6px; border-left: 2px solid var(--accent-gold);">
+                            <span style="font-size: 11px; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">核心作用</span>
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5;">${subplotPurpose}</div>
+                        </div>
+                    </div>
+                    <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+                        <span style="font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">当前数据解读</span>
+                        <div style="font-size: 13px; line-height: 1.7; color: var(--text-secondary); margin-top: 6px;">${subplotAnalysis}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('analysis-content').innerHTML = html;
+        document.getElementById('analysis-status').innerText = '量化多指标实时分析中';
+    }
+
+    function updateDynamicMacroAnalysis() {
+        if (!cachedMacroData) return;
+        
+        const res = cachedMacroData;
+        const symbol = currentMacroSymbol;
+        const rVal = parseFloat(document.getElementById('correlation-val').innerText) || 0.0;
+        const rDesc = document.getElementById('correlation-desc').innerText;
+        
+        const macroName = symbol === 'dxy' ? '美元指数 (DXY)' : '美债 10Y 收益率 (TNX)';
+        
+        let trendDir = '盘整';
+        const vals = res.macro_values;
+        if (vals && vals.length > 5) {
+            const lastVal = vals[vals.length - 1];
+            const prevVal = vals[vals.length - 5];
+            if (lastVal > prevVal * 1.002) {
+                trendDir = '呈上扬趋势';
+            } else if (lastVal < prevVal * 0.998) {
+                trendDir = '呈下行趋势';
+            }
+        }
+        
+        let macroAnalysis = '';
+        if (symbol === 'dxy') {
+            if (trendDir === '呈上扬趋势') {
+                macroAnalysis = `【美元走强压制金价】当前 <strong>美元指数 (DXY) ${trendDir}</strong>。黄金作为以美元计价的全球等价物，与美元呈显著的传统负相关关系。美元上涨会直接抑制全球对黄金的避险和投资需求，金价短线面临上方明显压制。`;
+            } else if (trendDir === '呈下行趋势') {
+                macroAnalysis = `【美元走弱提振金价】当前 <strong>美元指数 (DXY) ${trendDir}</strong>。美元弱势下行能有效提振黄金价格的本币估值，为金价提供强力支撑，金价近期呈现偏多偏强运行的特征。`;
+            } else {
+                macroAnalysis = `【美元横盘整理】当前 <strong>美元指数 (DXY) 呈区间震荡</strong>。黄金价格与其传统的负相关性暂时减弱，金价走势近期将更多由黄金自身资金面与微观技术指标决定。`;
+            }
+        } else {
+            // TNX
+            if (trendDir === '呈上扬趋势') {
+                macroAnalysis = `【美债收益率攀升利空黄金】当前 <strong>美债 10Y 收益率 (TNX) ${trendDir}</strong>。美债收益率是全球无风险资产的定价基准，其上涨抬高了持有“无息资产”黄金的机会成本。多头套利资金倾向于流向高息美债，对金价构成直接打压。`;
+            } else if (trendDir === '呈下行趋势') {
+                macroAnalysis = `【美债收益率回落利好黄金】当前 <strong>美债 10Y 收益率 (TNX) ${trendDir}</strong>。收益率走低代表市场对美联储未来宽松货币政策预期增强。黄金的机会成本急剧下降，有利于大型配置基金做多，对黄金属显性利好。`;
+            } else {
+                macroAnalysis = `【美债收益率窄幅震荡】当前 <strong>美债 10Y 收益率 (TNX) 波动平缓</strong>。债市对黄金的边际压制温和，金价正围绕均线 and 趋势轨道做常态化修正。`;
+            }
+        }
+        
+        let correlationAnalysis = `当前周期下，黄金价格与${macroName}的<strong>Pearson 相关系数 r 达 ${rVal.toFixed(2)}</strong>，呈现<strong>${rDesc}</strong>。`;
+        if (rVal <= -0.5) {
+            correlationAnalysis += ` 这种高强度的负相关反映了经典的宏观套利逻辑成立，${symbol === 'dxy' ? '美元指数的每次拉升均会成为金价回调的催化剂。' : '美债利率的下行是推动金价大波段上涨的最核心引擎。'}`;
+        } else if (rVal >= 0.3) {
+            correlationAnalysis += ` 当前相关系数出现非典负相关甚至弱正相关，表明传统宏观逻辑发生短期钝化，黄金可能正受到突发地缘政治避险需求或央行巨量购金等单边强势因素主导。`;
+        } else {
+            correlationAnalysis += ` 目前两者负相关关系较弱，表明市场主要逻辑已切换为微观技术指标或盘整整理格局。`;
+        }
+        
+        const html = `
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); padding: 12px; border-radius: 6px; margin-bottom: 8px;">
+                <div style="font-weight: 600; font-size: 11px; color: var(--primary); margin-bottom: 6px; display:flex; align-items:center; gap: 4px;"><span>🌍</span> 宏观对照因子解读：</div>
+                <div style="font-size: 10.5px; line-height: 1.5; color: var(--text-secondary);">${macroAnalysis}</div>
+            </div>
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); padding: 12px; border-radius: 6px;">
+                <div style="font-weight: 600; font-size: 11px; color: var(--primary); margin-bottom: 6px; display:flex; align-items:center; gap: 4px;"><span>🔗</span> 联动关联度诊断：</div>
+                <div style="font-size: 10.5px; line-height: 1.5; color: var(--text-secondary);">${correlationAnalysis}</div>
+            </div>
+        `;
+        document.getElementById('analysis-content').innerHTML = html;
+        document.getElementById('analysis-status').innerText = '宏观关联分析已刷新';
+    }
+
+    // ===== 价格提醒功能 =====
+    function getPriceAlerts() {
+        try { return JSON.parse(localStorage.getItem('gold_price_alerts') || '[]'); }
+        catch(e) { return []; }
+    }
+    function savePriceAlerts(alerts) {
+        localStorage.setItem('gold_price_alerts', JSON.stringify(alerts));
+    }
+    function renderAlertList() {
+        const alerts = getPriceAlerts();
+        const listEl = document.getElementById('alert-list');
+        if (!listEl) return;
+        if (alerts.length === 0) {
+            listEl.innerHTML = '<span style="color: var(--text-tertiary); font-size: 10px;">暂无提醒</span>';
+            return;
+        }
+        listEl.innerHTML = alerts.map((a, i) =>
+            `<span class="alert-badge">${a.direction === 'above' ? '≥' : '≤'} ¥${a.price.toFixed(2)}
+                <span class="remove-btn" onclick="removePriceAlert(${i})">✕</span>
+            </span>`
+        ).join('');
+    }
+    function addPriceAlert() {
+        const input = document.getElementById('alert-price-input');
+        const dirSel = document.getElementById('alert-direction');
+        if (!input || !input.value) return;
+        const price = parseFloat(input.value);
+        if (isNaN(price) || price <= 0) return;
+        const direction = dirSel ? dirSel.value : 'above';
+        const alerts = getPriceAlerts();
+        alerts.push({ price, direction, triggered: false });
+        savePriceAlerts(alerts);
+        input.value = '';
+        renderAlertList();
+    }
+    function removePriceAlert(index) {
+        const alerts = getPriceAlerts();
+        alerts.splice(index, 1);
+        savePriceAlerts(alerts);
+        renderAlertList();
+    }
+    function checkPriceAlerts() {
+        if (!currentPriceData) return;
+        const alerts = getPriceAlerts();
+        let changed = false;
+        alerts.forEach(a => {
+            if (a.triggered) return;
+            const price = currentPriceData.latest;
+            if (a.direction === 'above' && price >= a.price) {
+                a.triggered = true;
+                changed = true;
+                alert(`🔔 价格提醒触发：Au(T+D) 已上穿 ¥${a.price.toFixed(2)}，当前 ¥${price.toFixed(2)}`);
+            } else if (a.direction === 'below' && price <= a.price) {
+                a.triggered = true;
+                changed = true;
+                alert(`🔔 价格提醒触发：Au(T+D) 已下穿 ¥${a.price.toFixed(2)}，当前 ¥${price.toFixed(2)}`);
+            }
+        });
+        if (changed) {
+            savePriceAlerts(alerts);
+            renderAlertList();
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        try {
+            initTrendChart();
+        } catch (chartErr) {
+            console.error("Failed to initialize chart:", chartErr);
+        }
+        
+        try {
+            initConsensusChart();
+        } catch (gaugeErr) {
+            console.error("Failed to initialize consensus gauge:", gaugeErr);
+        }
+        
+        try {
+            updateDashboardSummary();
+        } catch (sumErr) {
+            console.error("Failed to update dashboard summary:", sumErr);
+        }
+
+        // 初始化价格提醒列表
+        try { renderAlertList(); } catch(e) {}
+        
+        // 10秒自动刷新
+        setInterval(() => {
+            try {
+                updateDashboardSummary();
+            } catch (refErr) {
+                console.error("Auto refresh failed:", refErr);
+            }
+            // 分析面板同步刷新（每次行情刷新后更新技术指标诊断文案）
+            try {
+                if (cachedChartData) updateDynamicTrendAnalysis();
+            } catch (aErr) {
+                console.error("Analysis panel refresh failed:", aErr);
+            }
+            // 价格提醒检测
+            try {
+                checkPriceAlerts();
+            } catch (aErr2) {
+                console.error("Price alert check failed:", aErr2);
+            }
+        }, 10000);
+    });
+</script>
+{% endblock %}
