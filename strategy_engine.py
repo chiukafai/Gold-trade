@@ -255,7 +255,22 @@ class Simulator:
         self.leverage = leverage
         self.size_pct = size_pct  # 每次开仓占用本金比例
         # 摩擦成本配置（向后兼容：不传则用默认值，滑点为0即无影响）
-        self.friction = friction or FrictionConfig(fee_rate=fee)
+        # 支持传入 dict 或 FrictionConfig 对象（API 调用时传 dict，内部调用传对象）
+        if friction is None:
+            self.friction = FrictionConfig(fee_rate=fee)
+        elif isinstance(friction, FrictionConfig):
+            self.friction = friction
+        elif isinstance(friction, dict):
+            self.friction = FrictionConfig(
+                fee_rate=float(friction.get("fee_rate", fee)),
+                slippage_bps=float(friction.get("slippage_bps", 0)),
+                slippage_mode=friction.get("slippage_mode", "fixed"),
+                slippage_random_range=tuple(friction.get("slippage_random_range", [])) if friction.get("slippage_random_range") else None,
+                deferred_fee_rate=float(friction.get("deferred_fee_rate", 0.00015)),
+                include_deferred_fee=bool(friction.get("include_deferred_fee", False)),
+            )
+        else:
+            self.friction = FrictionConfig(fee_rate=fee)
         # 摩擦成本累计追踪
         self._total_fees = 0.0
         self._total_slippage = 0.0

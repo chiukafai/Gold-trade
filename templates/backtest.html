@@ -101,6 +101,7 @@
         border-radius: 12px; padding: 16px; margin-bottom: 20px;
     }
     .chart-container h4 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary); }
+    .chart-container canvas { max-height: 240px; }
 
     /* 热力图 */
     .heatmap-wrap { display: flex; gap: 20px; align-items: flex-start; }
@@ -325,15 +326,19 @@
                     <div class="stat-box"><div class="v" id="ps-robustness"><span class="risk-grade grade-D">--</span></div><div class="k">稳健性评级</div></div>
                 </div>
                 <div class="chart-container">
-                    <h4>🔥 参数敏感性热力图（颜色越绿=收益越高）</h4>
+                    <h4>🔥 参数敏感性热力图</h4>
+                    <p style="font-size:12px; color:var(--text-secondary); margin:0 0 12px;">每格代表一组参数组合的回测收益。<strong style="color:#22c55e;">绿色=盈利</strong>，<strong style="color:#ef4444;">红色=亏损</strong>，颜色越深幅度越大。若全图同色说明策略对此参数不敏感。</p>
                     <div class="heatmap-wrap">
-                        <canvas id="heatmap-canvas"></canvas>
+                        <div class="heatmap-container">
+                            <canvas id="heatmap-canvas"></canvas>
+                        </div>
                         <div class="heatmap-legend">
                             <span>高收益</span>
                             <div class="legend-bar"></div>
                             <span>低收益</span>
                         </div>
                     </div>
+                    <div id="heatmap-empty-msg" style="display:none; padding:24px; text-align:center; color:var(--text-secondary); font-size:13px;"></div>
                 </div>
                 <div class="info-bar" id="ps-interpretation"></div>
             </div>
@@ -642,10 +647,17 @@ function drawEquityChart(equity) {
         },
         options: {
             responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => '¥' + c.parsed.y.toLocaleString() } } },
             scales: {
                 x: { display: false },
-                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } }
+                y: {
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: {
+                        color: 'rgba(255,255,255,0.5)',
+                        maxTicksLimit: 5,
+                        callback: function(v) { return (v / 10000).toFixed(1) + '万'; }
+                    }
+                }
             }
         }
     });
@@ -682,7 +694,15 @@ function runSensitivity() {
 function renderSensitivity(r) {
     document.getElementById('ps-best-val').textContent = r.best_value + '%';
     const bp = r.best_params;
-    const bpStr = Object.entries(bp).map(([k,v]) => `${k}=${v}`).join(', ');
+    const paramMap = {
+        'rsi_oversold': 'RSI超卖线',
+        'rsi_overbought': 'RSI超买线',
+        'vol_confirm': '量能确认',
+    };
+    const bpStr = Object.entries(bp).map(([k,v]) => {
+        const label = paramMap[k] || k;
+        return `${label}=${v}`;
+    }).join('，');
     document.getElementById('ps-best-param').textContent = bpStr;
     const grade = r.robustness_level.charAt(0);
     document.getElementById('ps-robustness').innerHTML = `<span class="risk-grade grade-${grade}">${r.robustness_level}</span>`;
@@ -696,13 +716,42 @@ function renderSensitivity(r) {
 
 function drawHeatmap(r) {
     const cv = document.getElementById('heatmap-canvas');
+    const emptyMsg = document.getElementById('heatmap-empty-msg');
+
+    // 检查数据有效性
+    if (!r.matrix || r.matrix.length === 0 || r.matrix[0].length === 0) {
+        cv.style.display = 'none';
+        emptyMsg.style.display = '';
+        emptyMsg.textContent = '⚠️ 无有效数据，请重新运行参数扫描';
+        return;
+    }
+
     const rows = r.matrix.length;
     const cols = r.matrix[0].length;
-    const cellSize = 60;
-    const labelW = 50;
-    const labelH = 24;
-    cv.width = labelW + cols * cellSize;
-    cv.height = labelH + rows * cellSize;
+
+    // 检查是否所有值都相同（如全为0）
+    let allSame = true;
+    const firstVal = r.matrix[0][0];
+    r.matrix.forEach(row => row.forEach(v => { if (v !== firstVal) allSame = false; }));
+
+    if (allSame) {
+        cv.style.display = 'none';
+        emptyMsg.style.display = '';
+        emptyMsg.innerHTML = `⚠️ 所有 ${rows * cols} 组参数的收益均为 <strong style="color:${firstVal >= 0 ? '#22c55e' : '#ef4444'}">${firstVal}%</strong>，说明策略对此参数范围<strong>不敏感</strong>。<br>这意味着调整这两个参数不会改变结果，需要考虑更换策略或数据区间。`;
+        return;
+    }
+
+    cv.style.display = '';
+    emptyMsg.style.display = 'none';
+
+    const cellSize = 56;
+    const labelW = 70;
+    const labelH = 50;
+    const titleH = 20;
+    cv.width = labelW + cols * cellSize + 10;
+    cv.height = labelH + titleH + rows * cellSize + 30;
+    cv.style.maxWidth = '100%';
+    cv.style.height = 'auto';
     const ctx = cv.getContext('2d');
     ctx.clearRect(0, 0, cv.width, cv.height);
 
@@ -711,43 +760,79 @@ function drawHeatmap(r) {
     r.matrix.forEach(row => row.forEach(v => { if (v < minV) minV = v; if (v > maxV) maxV = v; }));
     const range = maxV - minV || 1;
 
-    // 绘制格子 + X 轴标签
+    // 颜色映射函数：负值=红色渐变，正值=绿色渐变，0=灰色
+    function valToColor(val) {
+        if (val === 0) return '#3a3a4e';
+        if (val < 0) {
+            const t = Math.min(1, Math.abs(val) / Math.max(Math.abs(minV), 0.01));
+            const r = 60 + Math.round(180 * t);
+            return `rgb(${r}, ${Math.round(40 + 20*(1-t))}, ${Math.round(50 + 20*(1-t))})`;
+        }
+        const t = Math.min(1, val / Math.max(maxV, 0.01));
+        const g = 80 + Math.round(117 * t);
+        return `rgb(${Math.round(34 + 100*(1-t))}, ${g}, ${Math.round(94 + 40*(1-t))})`;
+    }
+
+    const paramMap = {
+        'rsi_oversold': 'RSI超卖线',
+        'rsi_overbought': 'RSI超买线',
+        'vol_confirm': '量能确认',
+    };
+    const xLabel = paramMap[r.param_x] || r.param_x;
+    const yLabel = paramMap[r.param_y] || r.param_y;
+
+    // 绘制 X 轴标题
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`↓ ${xLabel} ↓`, labelW + cols * cellSize / 2, 2);
+
+    // 绘制 Y 轴标题
+    ctx.save();
+    ctx.translate(12, labelH + titleH + rows * cellSize / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`← ${yLabel} →`, 0, 0);
+    ctx.restore();
+
+    const gridTop = labelH + titleH;
+
+    // 绘制格子 + 标签
     r.matrix.forEach((row, yi) => {
         // Y 轴标签
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
         ctx.font = '11px sans-serif';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        ctx.fillText(r.y_labels[yi], labelW - 6, labelH + yi * cellSize + cellSize / 2);
+        ctx.fillText(r.y_labels[yi], labelW - 6, gridTop + yi * cellSize + cellSize / 2);
 
         row.forEach((val, xi) => {
             const x = labelW + xi * cellSize;
-            const y = labelH + yi * cellSize;
-            // 颜色映射：红→黄→绿
-            const t = (val - minV) / range;
-            let rC, gC, bC;
-            if (t < 0.5) {
-                const tt = t * 2;
-                rC = 239; gC = Math.round(68 + (190 - 68) * tt); bC = 68;
-            } else {
-                const tt = (t - 0.5) * 2;
-                rC = Math.round(239 + (34 - 239) * tt); gC = Math.round(190 + (197 - 190) * tt); bC = Math.round(68 + (94 - 68) * tt);
-            }
-            ctx.fillStyle = `rgb(${rC},${gC},${bC})`;
+            const y = gridTop + yi * cellSize;
+
+            ctx.fillStyle = valToColor(val);
             ctx.fillRect(x, y, cellSize - 2, cellSize - 2);
+
+            // 边框
+            ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+            ctx.strokeRect(x, y, cellSize - 2, cellSize - 2);
+
             // 数值
-            ctx.fillStyle = (t > 0.5) ? '#fff' : '#fff';
-            ctx.font = 'bold 12px sans-serif';
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 11px sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(val.toFixed(2), x + cellSize / 2, y + cellSize / 2);
-            // X 轴标签（第一行上方）
-            if (yi === 0) {
-                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            ctx.fillText(val.toFixed(2) + '%', x + cellSize / 2, y + cellSize / 2);
+
+            // X 轴标签（最后一行下方）
+            if (yi === rows - 1) {
+                ctx.fillStyle = 'rgba(255,255,255,0.6)';
                 ctx.font = '11px sans-serif';
                 ctx.textAlign = 'center';
-                ctx.textBaseline = 'bottom';
-                ctx.fillText(r.x_labels[xi], x + cellSize / 2, labelH - 4);
+                ctx.textBaseline = 'top';
+                ctx.fillText(r.x_labels[xi], x + cellSize / 2, gridTop + rows * cellSize + 4);
             }
         });
     });
