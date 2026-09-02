@@ -657,6 +657,64 @@ def handle_logs():
     return jsonify(result)
 
 
+@app.route('/api/auto_trade/status')
+def auto_trade_status():
+    """返回自动交易的实时状态信息（ATR、恐惧贪婪指数、活跃消息、最近决策）。
+    供前端实时展示自动交易引擎的"思维过程"。"""
+    from auto_trader import (DECISION_RECORDS, calc_atr, calc_fear_greed_index,
+                             fear_greed_label, _active_news)
+    from gold_price import fetch_sge_price, fetch_gold_history, calculate_consensus_score
+
+    try:
+        price_info = fetch_sge_price()
+    except Exception:
+        price_info = {"price": 0, "bid": 0, "ask": 0}
+    try:
+        hist = fetch_gold_history("30d", "1d")
+    except Exception:
+        hist = []
+
+    atr = calc_atr(hist)
+    score, rating, details, _ = calculate_consensus_score(hist)
+    rsi_val = hist[-1].get("rsi") if hist else None
+    fg = calc_fear_greed_index(hist, score, rsi_val)
+
+    recent = DECISION_RECORDS[-5:] if DECISION_RECORDS else []
+    recent_list = [{
+        "time": r["ts"].strftime("%H:%M:%S"),
+        "mode": r["mode"],
+        "score": r["score"],
+        "rating": r["rating"],
+        "action": r["action"],
+        "reason": r["reason"],
+        "atr": r.get("atr"),
+        "dynamic_grams": r.get("dynamic_grams"),
+        "fear_greed": r.get("fear_greed"),
+        "fear_greed_label": fear_greed_label(r["fear_greed"]) if r.get("fear_greed") else None,
+        "news": r.get("news"),
+        "news_dir": r.get("news_dir"),
+    } for r in recent]
+
+    news_info = None
+    if _active_news:
+        news_info = {
+            "name": _active_news.get("name"),
+            "direction": _active_news.get("direction"),
+            "desc": _active_news.get("desc"),
+            "score_shift": _active_news.get("score_shift"),
+        }
+
+    return jsonify({
+        "atr": round(atr, 2),
+        "score": score,
+        "rating": rating,
+        "fear_greed": round(fg, 1),
+        "fear_greed_label": fear_greed_label(fg),
+        "active_news": news_info,
+        "recent_decisions": recent_list,
+    })
+
+
 @app.route('/api/backtest', methods=['POST'])
 def handle_backtest():
     """运行策略回测，返回信号/盈亏/权益曲线（JSON）。
